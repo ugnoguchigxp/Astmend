@@ -66,6 +66,34 @@ export const value = f;
     expect(result.updatedText).toContain("import { foo as f, foo } from 'm';");
   });
 
+  it('is idempotent when named import exists in a later duplicate declaration', () => {
+    const result = applyPatchToText(
+      {
+        type: 'add_import',
+        file: 'src/math.ts',
+        module: 'm',
+        named: [
+          {
+            name: 'b',
+          },
+        ],
+      },
+      `import { a } from 'm';
+import { b } from 'm';
+
+export const value = a + b;
+`,
+    );
+
+    expect(result.changed).toBe(false);
+    expect(result.diff).toBe('');
+    expect(result.updatedText).toBe(`import { a } from 'm';
+import { b } from 'm';
+
+export const value = a + b;
+`);
+  });
+
   it('removes a named import from a declaration', () => {
     const result = applyPatchToText(
       {

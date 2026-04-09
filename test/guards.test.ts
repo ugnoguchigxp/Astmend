@@ -101,4 +101,29 @@ export function getUser(id: string) {
     expect(result.changed).toBe(true);
     expect(result.updatedText).toContain('profile: Profile');
   });
+
+  it('allows namespace-qualified imported types', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/userService.ts',
+        name: 'getUser',
+        changes: {
+          add_param: {
+            name: 'profile',
+            type: 'Types.Profile',
+          },
+        },
+      },
+      `import * as Types from './types';
+
+export function getUser(id: string) {
+  return id;
+}
+`,
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.updatedText).toContain('profile: Types.Profile');
+  });
 });
