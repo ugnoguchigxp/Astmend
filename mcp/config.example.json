@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "astmend": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/Astmend/dist/mcp/server.js"],
+      "cwd": "/ABSOLUTE/PATH/TO/Astmend"
+    }
+  }
+}
