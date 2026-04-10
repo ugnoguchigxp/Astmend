@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AstmendError, applyPatchToText } from '../src/index.js';
+import { applyPatchToText } from '../src/index.js';
 
 describe('applyPatchToText', () => {
   it('adds a parameter to a function', () => {
@@ -21,7 +21,8 @@ describe('applyPatchToText', () => {
 `,
     );
 
-    expect(result.changed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toContain('src/userService.ts');
     expect(result.updatedText).toContain('getUser(id: string, includeDeleted: boolean)');
     expect(result.diff).toContain('includeDeleted: boolean');
   });
@@ -45,7 +46,8 @@ describe('applyPatchToText', () => {
 `,
     );
 
-    expect(result.changed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toContain('src/userTypes.ts');
     expect(result.updatedText).toContain('isDeleted: boolean;');
     expect(result.diff).toContain('isDeleted: boolean;');
   });
@@ -69,71 +71,93 @@ describe('applyPatchToText', () => {
 `,
     );
 
-    expect(result.changed).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(0);
     expect(result.diff).toBe('');
   });
 
   it('rejects conflicting changes', () => {
-    expect(() =>
-      applyPatchToText(
-        {
-          type: 'update_interface',
-          file: 'src/userTypes.ts',
-          name: 'User',
-          changes: {
-            add_property: {
-              name: 'id',
-              type: 'number',
-            },
+    const result = applyPatchToText(
+      {
+        type: 'update_interface',
+        file: 'src/userTypes.ts',
+        name: 'User',
+        changes: {
+          add_property: {
+            name: 'id',
+            type: 'number',
           },
         },
-        `export interface User {
+      },
+      `export interface User {
   id: string;
 }
 `,
-      ),
-    ).toThrowError(AstmendError);
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0].reason).toBe('CONFLICT');
+    expect(result.diagnostics[0]).toContain('already exists');
   });
 
   it('rejects invalid input shape', () => {
-    try {
-      applyPatchToText(
-        {
-          type: 'update_function',
-          file: 'src/userService.ts',
-          name: 'getUser',
-          changes: {},
-        },
-        `export function getUser(id: string) {
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/userService.ts',
+        name: 'getUser',
+        changes: {},
+      },
+      `export function getUser(id: string) {
   return id;
 }
 `,
-      );
-      throw new Error('Expected invalid input to throw');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AstmendError);
-      expect((error as AstmendError).code).toBe('INVALID_INPUT');
-    }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0].reason).toBe('INVALID_PATCH_SCHEMA');
+  });
+
+  it('normalizes reject path when file is not a string', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 123,
+        name: 'getUser',
+        changes: {},
+      },
+      `export function getUser(id: string) {
+  return id;
+}
+`,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0]).toMatchObject({
+      path: 'unknown',
+      reason: 'INVALID_PATCH_SCHEMA',
+    });
   });
 
   it('rejects invalid TypeScript source', () => {
-    expect(() =>
-      applyPatchToText(
-        {
-          type: 'update_function',
-          file: 'src/userService.ts',
-          name: 'getUser',
-          changes: {
-            add_param: {
-              name: 'includeDeleted',
-              type: 'boolean',
-            },
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/userService.ts',
+        name: 'getUser',
+        changes: {
+          add_param: {
+            name: 'includeDeleted',
+            type: 'boolean',
           },
         },
-        `export function getUser(id: string) {
+      },
+      `export function getUser(id: string) {
   return id;
 `,
-      ),
-    ).toThrowError(AstmendError);
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0].reason).toBe('UNKNOWN');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AstmendError, applyPatchToText } from '../src/index.js';
+import { applyPatchToText } from '../src/index.js';
 
 describe('type validation', () => {
   it('allows local type aliases used in a function parameter', () => {
@@ -23,58 +23,57 @@ export function getUser(id: string) {
 `,
     );
 
-    expect(result.changed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
     expect(result.updatedText).toContain('userId: UserId');
   });
 
   it('rejects unresolved types in interface properties', () => {
-    expect(() =>
-      applyPatchToText(
-        {
-          type: 'update_interface',
-          file: 'src/userTypes.ts',
-          name: 'User',
-          changes: {
-            add_property: {
-              name: 'profile',
-              type: 'MissingType',
-            },
+    const result = applyPatchToText(
+      {
+        type: 'update_interface',
+        file: 'src/userTypes.ts',
+        name: 'User',
+        changes: {
+          add_property: {
+            name: 'profile',
+            type: 'MissingType',
           },
         },
-        `export interface User {
+      },
+      `export interface User {
   id: string;
 }
 `,
-      ),
-    ).toThrowError(AstmendError);
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0].reason).toBe('SYMBOL_NOT_FOUND');
   });
 
   it('rejects value imports used as type annotations', () => {
-    try {
-      applyPatchToText(
-        {
-          type: 'update_function',
-          file: 'src/userService.ts',
-          name: 'getUser',
-          changes: {
-            add_param: {
-              name: 'reader',
-              type: 'readFileSync',
-            },
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/userService.ts',
+        name: 'getUser',
+        changes: {
+          add_param: {
+            name: 'reader',
+            type: 'readFileSync',
           },
         },
-        `import { readFileSync } from 'node:fs';
+      },
+      `import { readFileSync } from 'node:fs';
 
 export function getUser(id: string) {
   return id;
 }
 `,
-      );
-      throw new Error('Expected invalid type usage to throw');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AstmendError);
-      expect((error as AstmendError).code).toBe('TYPE_NOT_FOUND');
-    }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.rejects[0].reason).toBe('SYMBOL_NOT_FOUND');
   });
 
   it('allows imported type-like bindings by context stubbing', () => {
@@ -98,7 +97,8 @@ export function getUser(id: string) {
 `,
     );
 
-    expect(result.changed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
     expect(result.updatedText).toContain('profile: Profile');
   });
 
@@ -123,7 +123,8 @@ export function getUser(id: string) {
 `,
     );
 
-    expect(result.changed).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
     expect(result.updatedText).toContain('profile: Types.Profile');
   });
 });

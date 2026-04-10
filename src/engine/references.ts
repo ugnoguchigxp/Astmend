@@ -1,4 +1,4 @@
-import { SyntaxKind, type Node, type SourceFile } from 'ts-morph';
+import { type Node, type SourceFile, SyntaxKind } from 'ts-morph';
 import { AstmendError } from './errors.js';
 import { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './project.js';
 

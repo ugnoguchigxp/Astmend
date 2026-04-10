@@ -54,8 +54,8 @@ describe('mcp server tool handlers', () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({
-      changed: true,
-      file: 'src/userService.ts',
+      success: true,
+      patchedFiles: ['src/userService.ts'],
     });
   });
 
@@ -74,9 +74,11 @@ describe('mcp server tool handlers', () => {
 `,
     });
 
-    expect(result.isError).toBe(true);
+    // Now it returns a structured ApplyResponse with success: false
+    expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({
-      code: 'INVALID_INPUT',
+      success: false,
+      rejects: [{ reason: 'INVALID_PATCH_SCHEMA' }],
     });
   });
 
@@ -122,11 +124,13 @@ describe('mcp server tool handlers', () => {
 
     expect(successResult.isError).toBeUndefined();
     expect(successResult.structuredContent).toMatchObject({
-      changed: true,
+      success: true,
+      patchedFiles: [existingFilePath],
     });
-    expect(errorResult.isError).toBe(true);
+    expect(errorResult.isError).toBeUndefined();
     expect(errorResult.structuredContent).toMatchObject({
-      code: 'FILE_NOT_FOUND',
+      success: false,
+      rejects: [{ reason: 'FILE_NOT_FOUND' }],
     });
   });
 

@@ -1,6 +1,6 @@
+import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
   analyzeReferencesFromFile,

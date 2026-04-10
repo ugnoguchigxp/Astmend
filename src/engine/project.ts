@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { IndentationText, Project, QuoteKind } from 'ts-morph';
 import ts from 'typescript';
-import { Project, QuoteKind, IndentationText } from 'ts-morph';
 import { AstmendError } from './errors.js';
 
 export interface SourceDocument {

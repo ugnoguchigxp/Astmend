@@ -17,7 +17,7 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
 
 - 安全性: AST 操作で文字列編集由来の崩れを回避
 - 冪等性: 同じ命令を再実行しても不要な変更を出しにくい設計
-- 透明性: `changed` と `diff` で変更有無と内容が一目でわかる
+- 透明性: `success`, `patchedFiles`, `diff` で変更有無と内容が一目でわかる
 - 拡張性: 操作単位（`update_function` など）で機能を段階追加できる
 - 運用性: MCP は `stdio` 実行に対応し、常駐サーバーなしで導入可能
 
@@ -34,7 +34,7 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
   - 影響範囲検出（`detectImpact*`）
 - 入力検証
   - Zod スキーマによる命令バリデーション
-  - 不正入力時の明確な `AstmendError` 返却
+  - 構造化された診断情報の返却 (`ApplyResponse`)
 
 ## 非ゴール（このリポジトリがやらないこと）
 
@@ -74,10 +74,37 @@ const result = applyPatchToText(
   source,
 );
 
-console.log(result.changed); // true / false
-console.log(result.diff);    // unified diff
+console.log(result.success);      // true / false
+console.log(result.patchedFiles); // ['src/userService.ts'] (変更があった場合)
+console.log(result.diff);         // unified diff
 console.log(result.updatedText);
 ```
+
+### 失敗時のレスポンス
+
+失敗時は `success: false` となり、`rejects` に詳細な理由が含まれます。
+
+```json
+{
+  "success": false,
+  "patchedFiles": [],
+  "rejects": [
+    {
+      "path": "src/userService.ts",
+      "reason": "SYMBOL_NOT_FOUND"
+    }
+  ],
+  "diagnostics": ["Function not found: getUser"],
+  "diff": ""
+}
+```
+
+#### 主な失敗理由 (reason)
+1. `SYMBOL_NOT_FOUND`: 対象の関数やインターフェースが見つからない
+2. `INVALID_PATCH_SCHEMA`: パッチ命令の形式が不正
+3. `FILE_NOT_FOUND`: 対象ファイルが存在しない
+4. `CONFLICT`: 既に対象の変更が存在する、または曖昧な対象指定
+5. `UNKNOWN`: その他の予期せぬエラー
 
 ## MCP として使う
 

@@ -1,16 +1,36 @@
-import { patchOperationSchema, type PatchOperation } from './schema/patch.js';
-import { AstmendError } from './engine/errors.js';
+import { ZodError } from 'zod';
 import { createPatchDiff } from './engine/diff.js';
+import {
+  type ApplyReason,
+  AstmendError,
+  isAstmendError,
+  mapErrorCodeToReason,
+} from './engine/errors.js';
 import { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './engine/project.js';
 import { addImport } from './ops/addImport.js';
 import { removeImport } from './ops/removeImport.js';
+import { updateConstructor } from './ops/updateConstructor.js';
 import { updateFunction } from './ops/updateFunction.js';
 import { updateInterface } from './ops/updateInterface.js';
-import { updateConstructor } from './ops/updateConstructor.js';
-import { ZodError } from 'zod';
+import { type PatchOperation, patchOperationSchema } from './schema/patch.js';
 
-export interface PatchResult {
-  file: string;
+export interface ApplyReject {
+  path: string;
+  reason: ApplyReason;
+  hunk?: string;
+}
+
+export interface ApplyResponse {
+  success: boolean;
+  patchedFiles: string[];
+  rejects: ApplyReject[];
+  diagnostics: string[];
+  diff: string;
+  // For internal/legacy use if needed, but primarily for the new IF
+  updatedText?: string;
+}
+
+interface InternalOperationResult {
   changed: boolean;
   updatedText: string;
   diff: string;
@@ -19,7 +39,7 @@ export interface PatchResult {
 const executeOperation = (
   operation: PatchOperation,
   sourceText: string,
-): Omit<PatchResult, 'file'> => {
+): InternalOperationResult => {
   const document = loadSourceDocumentFromText(operation.file, sourceText);
   const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
   const beforeText = document.sourceText;
@@ -91,23 +111,86 @@ export const parsePatchOperation = (input: unknown): PatchOperation => {
   }
 };
 
-export const applyPatchToText = (input: unknown, sourceText: string): PatchResult => {
-  const operation = parsePatchOperation(input);
-  const result = executeOperation(operation, sourceText);
+const createErrorResponse = (error: unknown, filePath?: string): ApplyResponse => {
+  if (isAstmendError(error)) {
+    return {
+      success: false,
+      patchedFiles: [],
+      rejects: [
+        {
+          path: filePath ?? 'unknown',
+          reason: mapErrorCodeToReason(error.code),
+        },
+      ],
+      diagnostics: [error.message],
+      diff: '',
+    };
+  }
 
+  const message = error instanceof Error ? error.message : String(error);
   return {
-    file: operation.file,
-    ...result,
+    success: false,
+    patchedFiles: [],
+    rejects: [
+      {
+        path: filePath ?? 'unknown',
+        reason: 'UNKNOWN',
+      },
+    ],
+    diagnostics: [message],
+    diff: '',
   };
 };
 
-export const applyPatchFromFile = async (input: unknown): Promise<PatchResult> => {
-  const operation = parsePatchOperation(input);
-  const document = await loadSourceDocumentFromFile(operation.file);
-  const result = executeOperation(operation, document.sourceText);
+const extractFilePath = (input: unknown): string | undefined => {
+  if (typeof input !== 'object' || input === null || !('file' in input)) {
+    return undefined;
+  }
 
-  return {
-    file: operation.file,
-    ...result,
-  };
+  const { file } = input as { file?: unknown };
+  return typeof file === 'string' ? file : undefined;
+};
+
+export const applyPatchToText = (input: unknown, sourceText: string): ApplyResponse => {
+  try {
+    const operation = parsePatchOperation(input);
+    const result = executeOperation(operation, sourceText);
+
+    return {
+      success: true,
+      patchedFiles: result.changed ? [operation.file] : [],
+      rejects: [],
+      diagnostics: [],
+      diff: result.diff,
+      updatedText: result.updatedText,
+    };
+  } catch (error) {
+    // If we failed before parsing the operation, we might not have the file path
+    const filePath = extractFilePath(input);
+    return createErrorResponse(error, filePath);
+  }
+};
+
+export const applyPatchFromFile = async (input: unknown): Promise<ApplyResponse> => {
+  let filePath: string | undefined;
+  try {
+    const operation = parsePatchOperation(input);
+    filePath = operation.file;
+    const document = await loadSourceDocumentFromFile(operation.file);
+    const result = executeOperation(operation, document.sourceText);
+
+    return {
+      success: true,
+      patchedFiles: result.changed ? [operation.file] : [],
+      rejects: [],
+      diagnostics: [],
+      diff: result.diff,
+      updatedText: result.updatedText,
+    };
+  } catch (error) {
+    if (!filePath) {
+      filePath = extractFilePath(input);
+    }
+    return createErrorResponse(error, filePath);
+  }
 };

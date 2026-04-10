@@ -1,8 +1,8 @@
 import type { ClassDeclaration, ConstructorDeclaration, SourceFile } from 'ts-morph';
 import { AstmendError } from '../engine/errors.js';
 import { assertTypeResolvesInContext } from '../engine/guards.js';
-import type { OperationResult } from './updateFunction.js';
 import type { UpdateConstructorOperation } from '../schema/patch.js';
+import type { OperationResult } from './updateFunction.js';
 
 const findUniqueClassDeclaration = (
   sourceFile: SourceFile,
