@@ -9,6 +9,7 @@ import {
 import { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './engine/project.js';
 import { addImport } from './ops/addImport.js';
 import { removeImport } from './ops/removeImport.js';
+import { renameSymbol } from './ops/renameSymbol.js';
 import { updateConstructor } from './ops/updateConstructor.js';
 import { updateFunction } from './ops/updateFunction.js';
 import { updateInterface } from './ops/updateInterface.js';
@@ -74,6 +75,12 @@ const executeOperation = (
     }
     case 'update_constructor': {
       const result = updateConstructor(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'rename_symbol': {
+      const result = renameSymbol(sourceFile, operation);
       updatedText = result.updatedText;
       changed = result.changed;
       break;

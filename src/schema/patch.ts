@@ -27,6 +27,13 @@ const removePropertySchema = z
   })
   .strict();
 
+const renameTargetSchema = z
+  .object({
+    kind: z.enum(['function', 'interface', 'class', 'type_alias', 'enum', 'variable']),
+    name: z.string().min(1),
+  })
+  .strict();
+
 const namedImportSchema = z
   .object({
     name: z.string().min(1),
@@ -105,12 +112,22 @@ export const updateConstructorSchema = z
   })
   .strict();
 
+export const renameSymbolSchema = z
+  .object({
+    type: z.literal('rename_symbol'),
+    file: z.string().min(1),
+    target: renameTargetSchema,
+    newName: z.string().min(1),
+  })
+  .strict();
+
 export const patchOperationSchema = z.discriminatedUnion('type', [
   updateFunctionSchema,
   updateInterfaceSchema,
   addImportSchema,
   removeImportSchema,
   updateConstructorSchema,
+  renameSymbolSchema,
 ]);
 
 export type UpdateFunctionOperation = z.infer<typeof updateFunctionSchema>;
@@ -118,4 +135,5 @@ export type UpdateInterfaceOperation = z.infer<typeof updateInterfaceSchema>;
 export type AddImportOperation = z.infer<typeof addImportSchema>;
 export type RemoveImportOperation = z.infer<typeof removeImportSchema>;
 export type UpdateConstructorOperation = z.infer<typeof updateConstructorSchema>;
+export type RenameSymbolOperation = z.infer<typeof renameSymbolSchema>;
 export type PatchOperation = z.infer<typeof patchOperationSchema>;

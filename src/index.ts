@@ -35,6 +35,7 @@ export {
 } from './engine/references.js';
 export { addImport } from './ops/addImport.js';
 export { removeImport } from './ops/removeImport.js';
+export { renameSymbol } from './ops/renameSymbol.js';
 export { updateConstructor } from './ops/updateConstructor.js';
 export {
   type ApplyReject,
@@ -50,6 +51,8 @@ export {
   patchOperationSchema,
   type RemoveImportOperation,
   removeImportSchema,
+  type RenameSymbolOperation,
+  renameSymbolSchema,
   type UpdateConstructorOperation,
   type UpdateFunctionOperation,
   type UpdateInterfaceOperation,

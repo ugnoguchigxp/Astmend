@@ -1,11 +1,5 @@
 import { parsePatch, createTwoFilesPatch } from 'diff';
-import {
-  type ClassDeclaration,
-  type InterfaceDeclaration,
-  type Node,
-  type SourceFile,
-  SyntaxKind,
-} from 'ts-morph';
+import type { ClassDeclaration, InterfaceDeclaration, Node, SourceFile } from 'ts-morph';
 import { loadSourceDocumentFromText } from './project.js';
 
 export type ChangedSymbolKind =

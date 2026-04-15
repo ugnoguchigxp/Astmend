@@ -160,4 +160,30 @@ describe('applyPatchToText', () => {
     expect(result.success).toBe(false);
     expect(result.rejects[0].reason).toBe('UNKNOWN');
   });
+
+  it('renames a function and its references in the same file', () => {
+    const result = applyPatchToText(
+      {
+        type: 'rename_symbol',
+        file: 'src/userService.ts',
+        target: {
+          kind: 'function',
+          name: 'getUser',
+        },
+        newName: 'fetchUser',
+      },
+      `export function getUser(id: string) {
+  return id;
+}
+
+const current = getUser('1');
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toContain('src/userService.ts');
+    expect(result.updatedText).toContain('export function fetchUser(id: string)');
+    expect(result.updatedText).toContain("const current = fetchUser('1');");
+    expect(result.diff).toContain('fetchUser');
+  });
 });
