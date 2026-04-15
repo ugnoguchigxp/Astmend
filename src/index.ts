@@ -1,4 +1,13 @@
-export { createPatchDiff } from './engine/diff.js';
+export {
+  analyzeChangedSymbolsFromDiff,
+  analyzeChangedSymbolsFromText,
+  createPatchDiff,
+  type AnalyzeChangedSymbolsOptions,
+  type ChangedSymbol,
+  type ChangedSymbolChangeKind,
+  type ChangedSymbolKind,
+  type ChangedSymbolReport,
+} from './engine/diff.js';
 export {
   type ApplyReason,
   AstmendError,
