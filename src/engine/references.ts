@@ -1,6 +1,10 @@
 import { type Node, type SourceFile, SyntaxKind } from 'ts-morph';
 import { AstmendError } from './errors.js';
-import { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './project.js';
+import {
+  loadSourceDocumentFromFile,
+  loadSourceDocumentFromProjectRoot,
+  loadSourceDocumentFromText,
+} from './project.js';
 
 export type ReferenceTargetKind =
   | 'function'
@@ -15,10 +19,14 @@ export interface ReferenceTarget {
   name: string;
 }
 
+export type ExportKind = 'named' | 'default' | 'namespace' | null;
+
 export interface ReferenceLocation {
   line: number;
   column: number;
   text: string;
+  file?: string;
+  isDefinition?: boolean;
 }
 
 export interface ImpactedDeclaration {
@@ -31,6 +39,9 @@ export interface ImpactedDeclaration {
 
 export interface ReferenceAnalysis {
   target: ReferenceTarget;
+  isExported: boolean;
+  exportKind: ExportKind;
+  definition: ReferenceLocation;
   references: ReferenceLocation[];
   impactedDeclarations: ImpactedDeclaration[];
 }
@@ -39,10 +50,16 @@ type ReferenceableNode = Node & {
   findReferencesAsNodes(): Node[];
 };
 
-const findUniqueTargetNode = (
+type ExportableDeclaration = Node & {
+  getNameNode(): Node;
+  isDefaultExport(): boolean;
+  isExported(): boolean;
+};
+
+const findUniqueTargetDeclaration = (
   sourceFile: SourceFile,
   target: ReferenceTarget,
-): ReferenceableNode => {
+): ExportableDeclaration => {
   const matches = (() => {
     switch (target.kind) {
       case 'function':
@@ -84,7 +101,14 @@ const findUniqueTargetNode = (
     );
   }
 
-  return matches[0].getNameNode() as ReferenceableNode;
+  return matches[0] as ExportableDeclaration;
+};
+
+const findUniqueTargetNode = (
+  sourceFile: SourceFile,
+  target: ReferenceTarget,
+): ReferenceableNode => {
+  return findUniqueTargetDeclaration(sourceFile, target).getNameNode() as ReferenceableNode;
 };
 
 const impactOwnerKinds = [
@@ -125,20 +149,43 @@ const getNodeLabel = (node: Node): string => {
   return node.getText();
 };
 
-const toLocation = (node: Node): ReferenceLocation => {
+const toLocation = (node: Node, isDefinition = false): ReferenceLocation => {
   const position = node.getSourceFile().getLineAndColumnAtPos(node.getStart());
   return {
     line: position.line,
     column: position.column,
     text: node.getText(),
+    file: node.getSourceFile().getFilePath(),
+    isDefinition,
   };
+};
+
+const getExportKind = (declaration: ExportableDeclaration): ExportKind => {
+  if (declaration.isDefaultExport()) {
+    return 'default';
+  }
+
+  if (declaration.isExported()) {
+    return 'named';
+  }
+
+  return null;
 };
 
 export const analyzeReferences = (
   sourceFile: SourceFile,
   target: ReferenceTarget,
 ): ReferenceAnalysis => {
+  return analyzeReferencesForTarget(sourceFile, target);
+};
+
+const analyzeReferencesForTarget = (
+  sourceFile: SourceFile,
+  target: ReferenceTarget,
+): ReferenceAnalysis => {
+  const declaration = findUniqueTargetDeclaration(sourceFile, target);
   const targetNode = findUniqueTargetNode(sourceFile, target);
+  const exportKind = getExportKind(declaration);
   const referenceNodes = targetNode
     .findReferencesAsNodes()
     .filter(
@@ -149,8 +196,9 @@ export const analyzeReferences = (
         ),
     );
 
+  const definitionLocation = toLocation(targetNode, true);
   const references = referenceNodes
-    .map(toLocation)
+    .map((node) => toLocation(node, false))
     .sort((left, right) => left.line - right.line || left.column - right.column);
 
   const impactedByKey = new Map<string, ImpactedDeclaration>();
@@ -185,10 +233,18 @@ export const analyzeReferences = (
 
   return {
     target,
+    isExported: exportKind !== null,
+    exportKind,
+    definition: definitionLocation,
     references,
     impactedDeclarations,
   };
 };
+
+export const batchAnalyzeReferences = (
+  sourceFile: SourceFile,
+  targets: ReferenceTarget[],
+): ReferenceAnalysis[] => targets.map((target) => analyzeReferencesForTarget(sourceFile, target));
 
 export const analyzeReferencesFromText = (
   sourceText: string,
@@ -200,6 +256,16 @@ export const analyzeReferencesFromText = (
   return analyzeReferences(sourceFile, target);
 };
 
+export const batchAnalyzeReferencesFromText = (
+  sourceText: string,
+  targets: ReferenceTarget[],
+  filePath = '__astmend_references__.ts',
+): ReferenceAnalysis[] => {
+  const document = loadSourceDocumentFromText(filePath, sourceText);
+  const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
+  return batchAnalyzeReferences(sourceFile, targets);
+};
+
 export const analyzeReferencesFromFile = async (
   filePath: string,
   target: ReferenceTarget,
@@ -207,6 +273,35 @@ export const analyzeReferencesFromFile = async (
   const document = await loadSourceDocumentFromFile(filePath);
   const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
   return analyzeReferences(sourceFile, target);
+};
+
+export const batchAnalyzeReferencesFromFile = async (
+  filePath: string,
+  targets: ReferenceTarget[],
+): Promise<ReferenceAnalysis[]> => {
+  const document = await loadSourceDocumentFromFile(filePath);
+  const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
+  return batchAnalyzeReferences(sourceFile, targets);
+};
+
+export const analyzeReferencesFromProject = async (
+  projectRoot: string,
+  entryFile: string,
+  target: ReferenceTarget,
+): Promise<ReferenceAnalysis> => {
+  const document = await loadSourceDocumentFromProjectRoot(projectRoot, entryFile);
+  const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
+  return analyzeReferences(sourceFile, target);
+};
+
+export const batchAnalyzeReferencesFromProject = async (
+  projectRoot: string,
+  entryFile: string,
+  targets: ReferenceTarget[],
+): Promise<ReferenceAnalysis[]> => {
+  const document = await loadSourceDocumentFromProjectRoot(projectRoot, entryFile);
+  const sourceFile = document.project.getSourceFileOrThrow(document.sourceFilePath);
+  return batchAnalyzeReferences(sourceFile, targets);
 };
 
 export const detectImpactFromText = (

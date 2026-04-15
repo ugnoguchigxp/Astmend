@@ -5,6 +5,10 @@ import { z } from 'zod';
 import {
   analyzeReferencesFromFile,
   analyzeReferencesFromText,
+  analyzeReferencesFromProject,
+  batchAnalyzeReferencesFromFile,
+  batchAnalyzeReferencesFromText,
+  batchAnalyzeReferencesFromProject,
   applyPatchFromFile,
   applyPatchToText,
   detectImpactFromFile,
@@ -144,6 +148,87 @@ export const createServer = () => {
     async ({ filePath, target }) => {
       try {
         return toToolSuccessResult(await detectImpactFromFile(filePath, target));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'batch_analyze_references_from_text',
+    {
+      title: 'Batch Analyze References From Text',
+      description: 'Analyze references and impacted declarations for multiple targets in source text.',
+      inputSchema: z.object({
+        sourceText: z.string(),
+        targets: z.array(referenceTargetSchema).min(1),
+        filePath: z.string().optional(),
+      }),
+    },
+    async ({ sourceText, targets, filePath }) => {
+      try {
+        return toToolSuccessResult(batchAnalyzeReferencesFromText(sourceText, targets, filePath));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'batch_analyze_references_from_file',
+    {
+      title: 'Batch Analyze References From File',
+      description: 'Analyze references and impacted declarations for multiple targets in a file.',
+      inputSchema: z.object({
+        filePath: z.string().min(1),
+        targets: z.array(referenceTargetSchema).min(1),
+      }),
+    },
+    async ({ filePath, targets }) => {
+      try {
+        return toToolSuccessResult(await batchAnalyzeReferencesFromFile(filePath, targets));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'analyze_references_from_project',
+    {
+      title: 'Analyze References From Project',
+      description: 'Analyze references and impacted declarations across a TypeScript project.',
+      inputSchema: z.object({
+        projectRoot: z.string().min(1),
+        entryFile: z.string().min(1),
+        target: referenceTargetSchema,
+      }),
+    },
+    async ({ projectRoot, entryFile, target }) => {
+      try {
+        return toToolSuccessResult(await analyzeReferencesFromProject(projectRoot, entryFile, target));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'batch_analyze_references_from_project',
+    {
+      title: 'Batch Analyze References From Project',
+      description: 'Analyze references and impacted declarations for multiple targets across a TypeScript project.',
+      inputSchema: z.object({
+        projectRoot: z.string().min(1),
+        entryFile: z.string().min(1),
+        targets: z.array(referenceTargetSchema).min(1),
+      }),
+    },
+    async ({ projectRoot, entryFile, targets }) => {
+      try {
+        return toToolSuccessResult(
+          await batchAnalyzeReferencesFromProject(projectRoot, entryFile, targets),
+        );
       } catch (error) {
         return toToolErrorResult(error);
       }

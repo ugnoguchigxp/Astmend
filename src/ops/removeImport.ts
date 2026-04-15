@@ -37,6 +37,18 @@ export const removeImport = (
   }
   let changed = false;
 
+  if (!operation.named) {
+    for (const existingDeclaration of existingDeclarations) {
+      existingDeclaration.remove();
+      changed = true;
+    }
+
+    return {
+      updatedText: sourceFile.getFullText(),
+      changed,
+    };
+  }
+
   for (const existingDeclaration of existingDeclarations) {
     const specifiersToRemove = operation.named.filter((entry) =>
       shouldRemoveSpecifier(existingDeclaration, entry.name, entry.alias),

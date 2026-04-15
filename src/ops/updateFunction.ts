@@ -29,37 +29,58 @@ export const updateFunction = (
   operation: UpdateFunctionOperation,
 ): OperationResult => {
   const functionDeclaration = findUniqueFunctionDeclaration(sourceFile, operation.name);
-  const { name, type } = operation.changes.add_param;
+  if ('add_param' in operation.changes) {
+    const { name, type } = operation.changes.add_param;
+    const existingParameter = functionDeclaration
+      .getParameters()
+      .find((parameter) => parameter.getName() === name);
+
+    if (existingParameter) {
+      const existingType =
+        existingParameter.getTypeNode()?.getText() ?? existingParameter.getType().getText();
+      if (existingType === type) {
+        return {
+          updatedText: sourceFile.getFullText(),
+          changed: false,
+        };
+      }
+
+      throw new AstmendError(
+        'DUPLICATE_CHANGE',
+        `Parameter already exists with a different type: ${operation.name}.${name}`,
+      );
+    }
+
+    assertTypeResolvesInContext(
+      sourceFile.getFullText(),
+      type,
+      `Function parameter ${operation.name}.${name}`,
+    );
+
+    functionDeclaration.addParameter({
+      name,
+      type,
+    });
+
+    return {
+      updatedText: sourceFile.getFullText(),
+      changed: true,
+    };
+  }
+
+  const { name } = operation.changes.remove_param;
   const existingParameter = functionDeclaration
     .getParameters()
     .find((parameter) => parameter.getName() === name);
 
-  if (existingParameter) {
-    const existingType =
-      existingParameter.getTypeNode()?.getText() ?? existingParameter.getType().getText();
-    if (existingType === type) {
-      return {
-        updatedText: sourceFile.getFullText(),
-        changed: false,
-      };
-    }
-
-    throw new AstmendError(
-      'DUPLICATE_CHANGE',
-      `Parameter already exists with a different type: ${operation.name}.${name}`,
-    );
+  if (!existingParameter) {
+    return {
+      updatedText: sourceFile.getFullText(),
+      changed: false,
+    };
   }
 
-  assertTypeResolvesInContext(
-    sourceFile.getFullText(),
-    type,
-    `Function parameter ${operation.name}.${name}`,
-  );
-
-  functionDeclaration.addParameter({
-    name,
-    type,
-  });
+  existingParameter.remove();
 
   return {
     updatedText: sourceFile.getFullText(),

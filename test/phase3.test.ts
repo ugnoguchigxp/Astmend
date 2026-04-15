@@ -193,6 +193,26 @@ export const value = path.sep;
     expect(result.updatedText).toContain("import path from 'node:path';");
   });
 
+  it('removes all import declarations for a module when named is omitted', () => {
+    const result = applyPatchToText(
+      {
+        type: 'remove_import',
+        file: 'src/math.ts',
+        module: 'node:path',
+      },
+      `import path, { resolve } from 'node:path';
+import * as fsPath from 'node:path';
+
+export const value = 1;
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
+    expect(result.updatedText).not.toContain("from 'node:path'");
+    expect(result.updatedText).toContain('export const value = 1;');
+  });
+
   it('creates a constructor when one does not exist', () => {
     const result = applyPatchToText(
       {
@@ -331,5 +351,98 @@ export const value = resolve('/tmp', 'a.txt');
 
     expect(result.success).toBe(false);
     expect(result.rejects[0].reason).toBe('SYMBOL_NOT_FOUND');
+  });
+
+  it('removes a parameter from a function', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/user.ts',
+        name: 'getUser',
+        changes: {
+          remove_param: {
+            name: 'includeDeleted',
+          },
+        },
+      },
+      `export function getUser(id: string, includeDeleted: boolean) {
+  return id;
+}
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
+    expect(result.updatedText).toContain('getUser(id: string)');
+    expect(result.updatedText).not.toContain('includeDeleted');
+  });
+
+  it('is idempotent when removing a missing function parameter', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_function',
+        file: 'src/user.ts',
+        name: 'getUser',
+        changes: {
+          remove_param: {
+            name: 'missing',
+          },
+        },
+      },
+      `export function getUser(id: string) {
+  return id;
+}
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(0);
+  });
+
+  it('removes a property from an interface', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_interface',
+        file: 'src/user.ts',
+        name: 'User',
+        changes: {
+          remove_property: {
+            name: 'includeDeleted',
+          },
+        },
+      },
+      `export interface User {
+  id: string;
+  includeDeleted: boolean;
+}
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(1);
+    expect(result.updatedText).toContain('id: string;');
+    expect(result.updatedText).not.toContain('includeDeleted');
+  });
+
+  it('is idempotent when removing a missing interface property', () => {
+    const result = applyPatchToText(
+      {
+        type: 'update_interface',
+        file: 'src/user.ts',
+        name: 'User',
+        changes: {
+          remove_property: {
+            name: 'missing',
+          },
+        },
+      },
+      `export interface User {
+  id: string;
+}
+`,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.patchedFiles).toHaveLength(0);
   });
 });

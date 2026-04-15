@@ -25,37 +25,56 @@ export const updateInterface = (
   operation: UpdateInterfaceOperation,
 ): OperationResult => {
   const interfaceDeclaration = findUniqueInterfaceDeclaration(sourceFile, operation.name);
-  const { name, type, optional } = operation.changes.add_property;
-  const existingProperty = interfaceDeclaration.getProperty(name);
+  if ('add_property' in operation.changes) {
+    const { name, type, optional } = operation.changes.add_property;
+    const existingProperty = interfaceDeclaration.getProperty(name);
 
-  if (existingProperty) {
-    const existingType =
-      existingProperty.getTypeNode()?.getText() ?? existingProperty.getType().getText();
-    const existingOptional = existingProperty.hasQuestionToken();
-    if (existingType === type && existingOptional === Boolean(optional)) {
-      return {
-        updatedText: sourceFile.getFullText(),
-        changed: false,
-      };
+    if (existingProperty) {
+      const existingType =
+        existingProperty.getTypeNode()?.getText() ?? existingProperty.getType().getText();
+      const existingOptional = existingProperty.hasQuestionToken();
+      if (existingType === type && existingOptional === Boolean(optional)) {
+        return {
+          updatedText: sourceFile.getFullText(),
+          changed: false,
+        };
+      }
+
+      throw new AstmendError(
+        'DUPLICATE_CHANGE',
+        `Property already exists with a different shape: ${operation.name}.${name}`,
+      );
     }
 
-    throw new AstmendError(
-      'DUPLICATE_CHANGE',
-      `Property already exists with a different shape: ${operation.name}.${name}`,
+    assertTypeResolvesInContext(
+      sourceFile.getFullText(),
+      type,
+      `Interface property ${operation.name}.${name}`,
     );
+
+    interfaceDeclaration.addProperty({
+      name,
+      type,
+      hasQuestionToken: optional ?? false,
+    });
+
+    return {
+      updatedText: sourceFile.getFullText(),
+      changed: true,
+    };
   }
 
-  assertTypeResolvesInContext(
-    sourceFile.getFullText(),
-    type,
-    `Interface property ${operation.name}.${name}`,
-  );
+  const { name } = operation.changes.remove_property;
+  const existingProperty = interfaceDeclaration.getProperty(name);
 
-  interfaceDeclaration.addProperty({
-    name,
-    type,
-    hasQuestionToken: optional ?? false,
-  });
+  if (!existingProperty) {
+    return {
+      updatedText: sourceFile.getFullText(),
+      changed: false,
+    };
+  }
+
+  existingProperty.remove();
 
   return {
     updatedText: sourceFile.getFullText(),

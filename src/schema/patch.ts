@@ -7,11 +7,23 @@ const addParamSchema = z
   })
   .strict();
 
+const removeParamSchema = z
+  .object({
+    name: z.string().min(1),
+  })
+  .strict();
+
 const addPropertySchema = z
   .object({
     name: z.string().min(1),
     type: z.string().min(1),
     optional: z.boolean().optional(),
+  })
+  .strict();
+
+const removePropertySchema = z
+  .object({
+    name: z.string().min(1),
   })
   .strict();
 
@@ -27,11 +39,18 @@ export const updateFunctionSchema = z
     type: z.literal('update_function'),
     file: z.string().min(1),
     name: z.string().min(1),
-    changes: z
-      .object({
-        add_param: addParamSchema,
-      })
-      .strict(),
+    changes: z.union([
+      z
+        .object({
+          add_param: addParamSchema,
+        })
+        .strict(),
+      z
+        .object({
+          remove_param: removeParamSchema,
+        })
+        .strict(),
+    ]),
   })
   .strict();
 
@@ -40,11 +59,18 @@ export const updateInterfaceSchema = z
     type: z.literal('update_interface'),
     file: z.string().min(1),
     name: z.string().min(1),
-    changes: z
-      .object({
-        add_property: addPropertySchema,
-      })
-      .strict(),
+    changes: z.union([
+      z
+        .object({
+          add_property: addPropertySchema,
+        })
+        .strict(),
+      z
+        .object({
+          remove_property: removePropertySchema,
+        })
+        .strict(),
+    ]),
   })
   .strict();
 
@@ -62,7 +88,7 @@ export const removeImportSchema = z
     type: z.literal('remove_import'),
     file: z.string().min(1),
     module: z.string().min(1),
-    named: z.array(namedImportSchema).min(1),
+    named: z.array(namedImportSchema).min(1).optional(),
   })
   .strict();
 

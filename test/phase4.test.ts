@@ -6,6 +6,9 @@ import {
   AstmendError,
   analyzeReferencesFromFile,
   analyzeReferencesFromText,
+  analyzeReferencesFromProject,
+  batchAnalyzeReferencesFromText,
+  batchAnalyzeReferencesFromProject,
   detectImpactFromFile,
   detectImpactFromText,
 } from '../src/index.js';
@@ -28,9 +31,48 @@ const value = foo();
       name: 'foo',
     });
 
+    expect(report.isExported).toBe(true);
+    expect(report.exportKind).toBe('named');
+    expect(report.definition).toMatchObject({ line: 1, column: 17, isDefinition: true });
     expect(report.references).toHaveLength(2);
     expect(report.references[0]).toMatchObject({ line: 6, column: 10 });
     expect(report.references[1]).toMatchObject({ line: 9, column: 15 });
+  });
+
+  it('detects default exported declarations', () => {
+    const report = analyzeReferencesFromText(
+      `export default function foo() {
+  return 1;
+}
+
+foo();
+`,
+      {
+        kind: 'function',
+        name: 'foo',
+      },
+    );
+
+    expect(report.isExported).toBe(true);
+    expect(report.exportKind).toBe('default');
+  });
+
+  it('reports non-exported declarations as not exported', () => {
+    const report = analyzeReferencesFromText(
+      `function foo() {
+  return 1;
+}
+
+foo();
+`,
+      {
+        kind: 'function',
+        name: 'foo',
+      },
+    );
+
+    expect(report.isExported).toBe(false);
+    expect(report.exportKind).toBeNull();
   });
 
   it('detects impacted declarations for a function target', () => {
@@ -147,6 +189,131 @@ const local = foo();
       kind: 'VariableDeclaration',
       name: 'local',
     });
+  });
+
+  it('analyzes multiple targets in one pass', () => {
+    const batchSource = `function foo() {
+  return bar();
+}
+
+function bar() {
+  return 1;
+}
+
+const value = foo();
+const other = bar();
+`;
+
+    const reports = batchAnalyzeReferencesFromText(batchSource, [
+      { kind: 'function', name: 'foo' },
+      { kind: 'function', name: 'bar' },
+    ]);
+
+    expect(reports).toHaveLength(2);
+    expect(reports[0].target).toMatchObject({ kind: 'function', name: 'foo' });
+    expect(reports[0].references).toHaveLength(1);
+    expect(reports[1].target).toMatchObject({ kind: 'function', name: 'bar' });
+    expect(reports[1].references).toHaveLength(2);
+  });
+
+  it('analyzes references across files in a project', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'astmend-project-'));
+
+    await writeFile(
+      path.join(tempDir, 'tsconfig.json'),
+      `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts"]
+}
+`,
+      'utf8',
+    );
+
+    await writeFile(
+      path.join(tempDir, 'foo.ts'),
+      `export function foo() {
+  return 1;
+}
+`,
+      'utf8',
+    );
+
+    await writeFile(
+      path.join(tempDir, 'bar.ts'),
+      `import { foo } from './foo';
+
+export const value = foo();
+`,
+      'utf8',
+    );
+
+    const report = await analyzeReferencesFromProject(tempDir, 'foo.ts', {
+      kind: 'function',
+      name: 'foo',
+    });
+
+    expect(report.definition.file?.endsWith('foo.ts')).toBe(true);
+    expect(report.definition.isDefinition).toBe(true);
+    expect(report.references.some((entry) => entry.file?.endsWith('bar.ts'))).toBe(true);
+  });
+
+  it('analyzes multiple targets across files in a project', async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'astmend-project-batch-'));
+
+    await writeFile(
+      path.join(tempDir, 'tsconfig.json'),
+      `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts"]
+}
+`,
+      'utf8',
+    );
+
+    await writeFile(
+      path.join(tempDir, 'foo.ts'),
+      `export function foo() {
+  return 1;
+}
+
+export function bar() {
+  return foo();
+}
+`,
+      'utf8',
+    );
+
+    await writeFile(
+      path.join(tempDir, 'consumer.ts'),
+      `import { foo, bar } from './foo';
+
+export const value = foo() + bar();
+`,
+      'utf8',
+    );
+
+    const reports = await batchAnalyzeReferencesFromProject(tempDir, 'foo.ts', [
+      { kind: 'function', name: 'foo' },
+      { kind: 'function', name: 'bar' },
+    ]);
+
+    expect(reports).toHaveLength(2);
+    expect(reports[0].references.some((entry) => entry.file?.endsWith('consumer.ts'))).toBe(true);
+    expect(reports[1].references.some((entry) => entry.file?.endsWith('consumer.ts'))).toBe(true);
   });
 
   it('throws when reference target is missing', () => {

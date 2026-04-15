@@ -20,6 +20,10 @@ describe('mcp server tool registration', () => {
     const tools = getTools();
     expect(Object.keys(tools).sort()).toEqual(
       [
+        'analyze_references_from_project',
+        'batch_analyze_references_from_file',
+        'batch_analyze_references_from_project',
+        'batch_analyze_references_from_text',
         'analyze_references_from_file',
         'analyze_references_from_text',
         'apply_patch_from_file',

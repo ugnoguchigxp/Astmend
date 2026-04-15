@@ -1,407 +1,431 @@
 # Astmend 実装詳細計画
 
-この文書は [`plan.md`](/Users/y.noguchi/Code/Astmend/plan.md) を前提に、各フェーズの実装内容を作業単位まで分解したものです。
+> 最終更新: 2026-04-15
+
+この文書は、Astmend を **再利用可能な TypeScript AST エンジン** として育てるための実装計画である。
+Astmend は特定の利用者に依存しない汎用ライブラリであり、拡張を進めつつも API 契約の汎用性を保つ。
 
 ---
 
-## 0. 共通方針
+## 0. 基本方針
 
 ### 目的
 
-- TypeScript コードに対して AST ベースで安全に変更を加える
-- テキスト置換ではなく、構造を壊さない変更を実現する
-- 変更結果は diff で確認できるようにする
+- TypeScript コードに対して AST ベースで安全な解析・修正を行う
+- テキスト正規表現依存を減らし、解析精度を上げる
+- 変更結果を diff で検証できるようにする
+- MCP 経由でもライブラリ直呼びでも使える契約を維持する
 
-### 前提制約
+### 維持する制約
 
-- 単一ファイルを対象とする
-- ファイル保存はしない
-- CLI は作らない
-- MCP 統合はしない
-- embedding / 検索は扱わない
+| 制約 | 詳細 |
+|------|------|
+| ファイル非保存 | 変更結果は diff / updatedText で返す。書き込みは呼び出し側の責務 |
+| 冪等性 | 同一命令の再実行で不要な変更を出さない |
+| 明示性優先 | 曖昧な指定は拒否し、`AstmendError` で診断情報を返す |
 
-### 共通の実装原則
+### 設計上の前提
 
-- 明示性を優先する
-- 変更は最小差分に抑える
-- 同じ命令を再実行しても壊れないようにする
-- 解析不能・曖昧指定・重複変更は明確に拒否する
-
-### 共通で用意するもの
-
-- 入力スキーマ
-- ファイル読み込み層
-- AST 操作のルーティング層
-- 変更差分の生成層
-- エラー型とエラーメッセージ規約
-- テスト基盤
+- 単一ファイル前提を超え、プロジェクト横断解析を扱えるようにする
+- 解析ロジック (`engine/`) と MCP 露出層 (`mcp/`) を分離する
+- 既存 API は壊さず、拡張は追加で行う（後方互換）
 
 ---
 
-## 1. Phase 0: 基盤整備
+## 1. 現在の実装状況
 
-### 目的
+本計画の REQ に着手する前に、既に実装済みの機能を整理する。
 
-以降のフェーズで共通利用する土台を整える。
+### パッチ操作（実装済み）
 
-### 実装タスク
+| 操作 | スキーマ | テスト |
+|------|----------|--------|
+| `update_function` (add_param) | `schema/patch.ts` | `router.test.ts` |
+| `update_interface` (add_property) | `schema/patch.ts` | `router.test.ts` |
+| `add_import` | `schema/patch.ts` | `phase3.test.ts` |
+| `remove_import` (named 必須) | `schema/patch.ts` | `phase3.test.ts` |
+| `update_constructor` (add_param) | `schema/patch.ts` | `phase3.test.ts` |
 
-1. ディレクトリ構成を作る
-   - `src/schema/`
-   - `src/engine/`
-   - `src/ops/`
-   - `src/router.ts`
-   - `src/index.ts`
+### 解析（実装済み）
 
-2. 依存関係を導入する
-   - `ts-morph`
-   - `zod`
-   - `diff`
+| 機能 | エントリポイント | テスト |
+|------|------------------|--------|
+| 参照解析（単一ファイル） | `analyzeReferencesFromText` / `analyzeReferencesFromFile` | `phase4.test.ts` |
+| 影響範囲検出（単一ファイル） | `detectImpactFromText` / `detectImpactFromFile` | `phase4.test.ts` |
 
-3. 共通型を定義する
-   - 命令のベース型
-   - 操作結果型
-   - エラー型
-   - diff 出力型
+### MCP ツール（実装済み）
 
-4. エラー設計を固める
-   - 入力不正
-   - 対象不在
-   - 重複検出
-   - 型不整合
-   - 未対応操作
+`apply_patch_to_text`, `apply_patch_from_file`, `analyze_references_from_text`, `analyze_references_from_file`, `detect_impact_from_text`, `detect_impact_from_file`
 
-5. テストの入口を作る
-   - 正常系と異常系を分ける
-   - 変更前後の文字列比較を容易にする
+### 未実装（本計画の対象）
 
-### 完了条件
+- export / visibility 情報の付与
+- diff からの変更シンボル抽出
+- プロジェクト横断の参照解析
+- 削除系パッチ操作 (`remove_param`, `remove_property`)
+- `remove_import` のモジュール全体削除
+- バッチ解析 API
+- `rename_symbol`
 
-- 各層の責務が分離されている
-- 次フェーズの操作実装を追加しやすい
-- エラー表現が一貫している
-
-### 主な検証観点
-
-- モジュール間依存が循環していない
-- 変更結果を文字列・diff として返せる
-- 将来の操作追加で大きく壊れない
+> **注**: 既存テストファイル名 (`phase3.test.ts`, `phase4.test.ts`) は初期開発時のフェーズ番号に由来する。本計画の Phase 番号とは対応しない。
 
 ---
 
-## 2. Phase 1: MVP
+## 2. 要件一覧と採用方針
 
-### 目的
+### 今回採用する要件
 
-最小の価値として、単一ファイルに対する安全な AST 変更と diff 出力を成立させる。
+| ID | 概要 | Phase | 依存 |
+|----|------|-------|------|
+| REQ-A03 | export / visibility 情報の付与 | 1 | なし |
+| REQ-A02 | diff からの変更シンボル抽出 | 1 | REQ-A03（`isExported` を利用） |
+| REQ-A01 | プロジェクト横断の参照解析 | 1 | REQ-A03（export 判定を流用） |
+| REQ-A05 | `remove_param` / `remove_property` | 2 | なし |
+| REQ-A06 | `remove_import` のモジュール全体削除 | 2 | なし |
+| REQ-A04 | バッチ解析 API | 3 | REQ-A01（複数ファイル解析の基盤を利用） |
 
-### 対象機能
+### 将来対応
 
-- `update_function`
-- `update_interface`
+| ID | 概要 | 前提条件 |
+|----|------|----------|
+| REQ-A07 | `rename_symbol` | REQ-A01（プロジェクト横断参照が前提） |
 
-### 2.1 入力スキーマ
+### 実装順の原則
 
-#### 実装タスク
-
-- JSON 命令のスキーマを定義する
-- `type`, `file`, `name`, `changes` を必須にする
-- `changes` の構造を操作ごとに限定する
-- 不明なキーや曖昧な指定を受け付けない
-
-#### 完了条件
-
-- 不正な命令が実行段階に到達しない
-- 操作ごとに必要なキーが明確になっている
-
-### 2.2 ファイル読み込み
-
-#### 実装タスク
-
-- 指定ファイルを読み込む
-- `ts-morph` で `SourceFile` に変換する
-- 単一ファイル前提で処理する
-- ファイルが存在しない場合は明確に失敗する
-
-#### 完了条件
-
-- 指定ファイルを解析できる
-- 存在しないファイルに対してわかりやすいエラーを返す
-
-### 2.3 ルーティング
-
-#### 実装タスク
-
-- `type` で操作を振り分ける
-- 未対応の `type` は拒否する
-- ルーティングは薄く保ち、各操作実装に責務を寄せる
-
-#### 完了条件
-
-- 操作追加時にルーターの変更が最小限で済む
-
-### 2.4 `update_function`
-
-#### 実装タスク
-
-- 関数名で対象を特定する
-- 関数宣言・メソッドなど、対象候補の扱い範囲を固定する
-- MVP では引数追加のみ実装する
-- 既存引数名との重複を検査する
-- 型情報を保持したまま引数を追加する
-- フォーマットやコメントを不必要に壊さない
-
-#### 完了条件
-
-- 指定関数に引数を1つ追加できる
-- 同名引数は追加されない
-- 対象不在時に明確なエラーを返す
-
-### 2.5 `update_interface`
-
-#### 実装タスク
-
-- interface 名で対象を特定する
-- MVP では property 追加のみ実装する
-- 既存プロパティ名との重複を検査する
-- 型注釈を保持したままプロパティを追加する
-
-#### 完了条件
-
-- 指定 interface にプロパティを1つ追加できる
-- 同名プロパティは追加されない
-- 対象不在時に明確なエラーを返す
-
-### 2.6 diff 生成
-
-#### 実装タスク
-
-- 変更前と変更後のテキストを比較する
-- 差分は最終出力として返す
-- 最小差分を優先する
-
-#### 完了条件
-
-- 変更内容が diff で追える
-- 不要な全文置換に近い出力を避けられる
-
-### 2.7 MVP テスト
-
-#### 実装タスク
-
-- 関数引数追加の正常系
-- interface プロパティ追加の正常系
-- 対象不在の異常系
-- 重複追加の異常系
-- 入力不正の異常系
-
-#### 完了条件
-
-- 主要な成功・失敗パターンが自動テストで覆われる
-
-### Phase 1 の成果物
-
-- 単一ファイルに対して AST 変更を行える
-- `update_function` と `update_interface` が動作する
-- diff が返る
+1. **解析の信頼性を先に上げる** — export 判定 → diff 解析 → 横断参照
+2. **削除系操作で修正面を広げる** — remove_param → remove_import 全体削除
+3. **効率化 API で運用負荷を下げる** — バッチ解析
 
 ---
 
-## 3. Phase 2: 安定化
+## 3. フェーズ構成
 
-### 目的
+```
+Phase 1: 解析基盤          Phase 2: 修正操作の拡張     Phase 3: 効率化
+┌─────────────────────┐   ┌──────────────────────┐   ┌─────────────┐
+│ REQ-A03 (export)    │   │ REQ-A05 (remove_*)   │   │ REQ-A04     │
+│        ↓            │   │ REQ-A06 (remove_imp) │   │ (batch API) │
+│ REQ-A02 (diff解析)  │   └──────────────────────┘   └─────────────┘
+│        ↓            │
+│ REQ-A01 (横断参照)  │        Phase 4: 将来拡張
+└─────────────────────┘   ┌──────────────────────┐
+                          │ REQ-A07 (rename)     │
+                          └──────────────────────┘
+```
 
-MVP の実装を堅牢化し、事故りやすいケースを明示的に防ぐ。
-
-### 対象機能
-
-- 重複チェック
-- 型存在チェック
-- エラーの明確化
-- フォーマット維持
-
-### 3.1 重複チェック強化
-
-#### 実装タスク
-
-- 既存引数・既存プロパティの検出ロジックを共通化する
-- 同一命令の再実行時に不変であることを保証する
-- 追加しようとしている要素が既にある場合は no-op かエラーに統一する
-
-#### 完了条件
-
-- 冪等性が壊れない
-- 同一変更の重複適用が防げる
-
-### 3.2 型存在チェック
-
-#### 実装タスク
-
-- 追加する型名の妥当性を検査する
-- 既存の型参照に依存する変更の前提を明確化する
-- 必要なら将来の型解決に向けた拡張ポイントを残す
-
-#### 完了条件
-
-- 明らかに不正な型指定を早期に弾ける
-
-### 3.3 エラー設計の整備
-
-#### 実装タスク
-
-- エラーコードを整理する
-- ユーザー向けメッセージを統一する
-- どの段階で失敗したか分かるようにする
-
-#### 完了条件
-
-- 失敗理由を見て修正行動につなげられる
-
-### 3.4 フォーマット維持
-
-#### 実装タスク
-
-- 変更箇所以外の整形差分を抑える
-- ts-morph の出力が余計に崩れないようにする
-- 既存の改行・インデント・並び順を極力維持する
-
-#### 完了条件
-
-- 実際の変更範囲が小さい diff になる
-
-### Phase 2 の成果物
-
-- 失敗条件が明確
-- 冪等性が強化される
-- 出力品質が安定する
+Phase 2 は Phase 1 と並行着手できる。Phase 3 は Phase 1 完了後に着手する。
 
 ---
 
-## 4. Phase 3: 拡張
+## 4. Phase 1: 解析基盤
 
-### 目的
+### 4.1 REQ-A03: export / visibility 情報の付与
 
-操作の種類を増やし、ルーターと操作実装の共通化を進める。
+#### 目的
 
-### 対象操作
+公開 API の変更を判定しやすくする。
 
-- `add_import`
-- `remove_import`
-- constructor 変更
+#### 変更対象ファイル
 
-### 4.1 操作共通化
-
-#### 実装タスク
-
-- 操作インターフェースを揃える
-- 入力検証 -> 対象解決 -> 実行 -> diff の流れを共通化する
-- 追加操作に必要な補助関数を整理する
-
-#### 完了条件
-
-- 新しい操作を差し込みやすい構造になる
-
-### 4.2 import 追加・削除
+- `src/engine/references.ts` — `ReferenceAnalysis` 型の拡張
+- `test/phase4.test.ts` — export 判定テストの追加
 
 #### 実装タスク
 
-- import 文の既存有無を判定する
-- 同一 import の重複を避ける
-- 削除時は未使用 import や specifier の扱いを整理する
+- `ReferenceAnalysis` に `isExported: boolean` を追加する
+- `exportKind` を追加する
+  - `'named'` — `export function foo()`
+  - `'default'` — `export default function`
+  - `'namespace'` — `export * as ns from`、もしくは `export =`
+  - `null` — export されていない場合
+- 対象シンボルの宣言ノードから export 状態を判定する
+- `analyzeReferences` / `analyzeReferencesFromText` / `analyzeReferencesFromFile` の返却値を拡張する
 
 #### 完了条件
 
-- import の追加・削除が構造を壊さずにできる
-
-### 4.3 constructor 変更
-
-#### 実装タスク
-
-- constructor の引数や本体の変更パターンを定義する
-- 他メンバーとの衝突を避ける
-- 既存の初期化ロジックを壊さない
-
-#### 完了条件
-
-- constructor を安全に更新できる
-
-### Phase 3 の成果物
-
-- 操作の種類が増える
-- 実装の共通化が進む
-- 将来の追加操作に耐えやすくなる
+- [ ] `ReferenceAnalysis` に `isExported` と `exportKind` が含まれる
+- [ ] `export function`, `export default class`, 非 export 関数の 3 パターンでテストが通る
+- [ ] 既存の参照解析テスト (`phase4.test.ts`) が変更なしで通る
 
 ---
 
-## 5. Phase 4: 構造理解
+### 4.2 REQ-A02: diff からの変更シンボル抽出
 
-### 目的
+#### 目的
 
-単純な局所変更を超えて、参照関係や影響範囲まで扱えるようにする。
+unified diff から変更対象シンボルを AST ベースで正確に抽出する。
 
-### 対象機能
+#### 変更対象ファイル
 
-- `findReferences`
-- 影響範囲検出
-
-### 5.1 参照解析
+- `src/engine/diff.ts` — 解析関数の追加（既存の `createPatchDiff` とは独立）
+- テストファイルの新規追加
 
 #### 実装タスク
 
-- 識別子の参照元・参照先をたどる
-- 変更対象に対する影響を列挙する
-- AST 単体では追えない情報が必要なら補助層を追加する
+- unified diff を受け取り、変更行を特定する解析関数を追加する
+- `sourceText` を併用して変更行を AST ノードに紐付ける
+- 以下の宣言形式を正確に扱う
+  - `export default function` / アロー関数
+  - class / method
+  - 行をまたぐ宣言
+  - ネストされた interface / type alias
+- 戻り値に `added` / `modified` / `removed` の区分を含める
+- REQ-A03 の `isExported` / `exportKind` を同時に返す
 
 #### 完了条件
 
-- 変更対象の周辺コードを把握できる
+- [ ] regex を使わず、AST ベースでシンボルを抽出できる
+- [ ] 複数行にまたがる宣言の変更を正しく検出する
+- [ ] `added` / `modified` / `removed` を区別して返す
+- [ ] `isExported` が各シンボルに付与される
 
-### 5.2 影響範囲検出
+#### 依存
+
+REQ-A03 の `isExported` 判定ロジックを利用する。
+
+---
+
+### 4.3 REQ-A01: プロジェクト横断の参照解析
+
+#### 目的
+
+他ファイルからの参照を含めて対象シンボルの利用箇所を追跡する。
+
+#### 実装方針
+
+- 本命は `projectRoot` 指定によるディスクベース解析とする
+- 補助的に `filePaths` 指定の軽量モード（対象ファイルを明示的に列挙）を許容する
+- `ts-morph Project` をディスクファイルシステム前提で構築する
+  - 現在の `loadSourceDocumentFromText` は in-memory `Project` を使用しており、横断解析には不向き
+  - ディスクベースの `Project` を別途構築し、tsconfig を解決する
+- import チェーンをたどって参照を集める
+
+#### 変更対象ファイル
+
+- `src/engine/project.ts` — ディスクベース `Project` 構築関数の追加
+- `src/engine/references.ts` — クロスファイル参照解析関数の追加、`ReferenceLocation` の拡張
+- `src/mcp/server.ts` — 新規 MCP ツールの登録
+- テストファイルの新規追加
 
 #### 実装タスク
 
-- 変更が波及する可能性のある箇所を出す
-- 危険な変更を事前に可視化する
-- 将来的な自動補正の前段階にする
+- `ReferenceLocation` に `file: string` と `isDefinition: boolean` を追加する
+  - 既存の単一ファイル解析では `file` は省略可能（後方互換）
+- 新しい入力型を追加する
+  - `projectRoot: string` — tsconfig.json のあるディレクトリ
+  - `entryFile: string` — 解析起点のファイルパス
+  - `target: ReferenceTarget`
+  - `maxDepth?: number` — import チェーンの最大深度
+- ディスクベースの `Project` を構築する初期化処理を追加する
+- 参照解析対象の SourceFile をプロジェクトから解決する
+- 参照を `file` 付きで返す
+- 定義箇所と参照箇所を `isDefinition` で区別する
 
 #### 完了条件
 
-- 変更前に影響箇所を確認できる
+- [ ] 他ファイルからの import 経由の参照を返せる
+- [ ] 定義箇所と参照箇所が `isDefinition` で分離される
+- [ ] 3 ファイル以上にまたがるテストケースが通る
+- [ ] 既存の単一ファイル参照解析テスト (`phase4.test.ts`) が変更なしで通る
 
-### Phase 4 の成果物
+#### 依存
 
-- 局所変更だけでなく構造的な見通しも持てる
-- 変更影響の説明力が上がる
-
----
-
-## 6. 横断的な完了基準
-
-各フェーズに共通する完了基準は以下。
-
-- 対象が明示されている
-- 不正入力が適切に拒否される
-- 変更が最小差分で出力される
-- 同じ命令を繰り返しても壊れない
-- 自動テストで主要パスが確認できる
+REQ-A03 の export 判定ロジックを利用して、export されたシンボルのみ横断参照を追跡する。
 
 ---
 
-## 7. 推奨する着手順
+## 5. Phase 2: 修正操作の拡張
 
-1. `schema` と `engine` の共通型を作る
-2. `update_function` を先に通す
-3. `update_interface` を続ける
-4. diff とエラーを整える
-5. 安定化テストを追加する
-6. その後に import / constructor / 参照解析へ進む
+> Phase 1 と並行して着手可能。既存のパッチ操作スキーマとルーティングの拡張のみで完結する。
+
+### 5.1 REQ-A05: `remove_param` / `remove_property`
+
+#### 目的
+
+削除系の修正操作をサポートし、追加系だけでなく不要な引数やプロパティの除去も扱えるようにする。
+
+#### 変更対象ファイル
+
+- `src/schema/patch.ts` — `changes` への `remove_param` / `remove_property` 追加
+- `src/ops/updateFunction.ts` — 引数削除ロジック
+- `src/ops/updateInterface.ts` — プロパティ削除ロジック
+- `src/router.ts` — ルーティング更新（既存の switch case 内で処理）
+- テストファイルの新規追加
+
+#### 実装タスク
+
+- `updateFunctionSchema` の `changes` に `remove_param: { name: string }` を追加する
+- `updateInterfaceSchema` の `changes` に `remove_property: { name: string }` を追加する
+- `changes` 内で `add_*` と `remove_*` は排他にする（同時指定はバリデーションエラー）
+- 削除対象が存在しない場合は no-op とする（冪等性の維持）
+- 名前が曖昧一致する場合や複数候補がある場合はエラーにする
+
+#### 完了条件
+
+- [ ] 関数引数の削除ができ、削除後のコードが構文的に正しい
+- [ ] interface プロパティの削除ができ、削除後のコードが構文的に正しい
+- [ ] 存在しない対象の削除は `changed: false` を返す（no-op）
+- [ ] 既存の `add_param` / `add_property` テストが変更なしで通る
 
 ---
 
-## 8. 期待する最終状態
+### 5.2 REQ-A06: `remove_import` のモジュール全体削除
 
-- 単一ファイルに対する安全な AST パッチ適用ができる
-- 命令は JSON で記述できる
-- 結果は diff で確認できる
-- 将来的な操作追加に耐える構造になっている
+#### 目的
+
+named specifier だけでなく import 宣言全体も削除できるようにする。
+
+#### 変更対象ファイル
+
+- `src/schema/patch.ts` — `removeImportSchema` の `named` を optional に変更
+- `src/ops/removeImport.ts` — モジュール単位削除ロジック
+- テストファイルの新規追加
+
+#### 実装タスク
+
+- `removeImportSchema` の `named` を `z.array(namedImportSchema).min(1).optional()` に変更する
+- `named` 省略時は対象モジュールの import 宣言全体を削除する
+- default import (`import x from '...'`) のみの宣言も削除対象にする
+- namespace import (`import * as x from '...'`) のみの宣言も削除対象にする
+- 同一モジュールに複数の import 宣言がある場合はすべて削除する
+
+#### 完了条件
+
+- [ ] `named` 省略時に import 宣言全体を削除できる
+- [ ] `named` 指定時は従来通り部分削除として動作する（後方互換）
+- [ ] default import / namespace import を含む宣言の削除テストが通る
+- [ ] 既存の `remove_import` テスト (`phase3.test.ts`) が変更なしで通る
+
+---
+
+## 6. Phase 3: 効率化
+
+### 6.1 REQ-A04: バッチ解析 API
+
+#### 目的
+
+複数 target をまとめて解析し、MCP ツール呼び出しの往復回数を減らす。
+
+#### 変更対象ファイル
+
+- `src/engine/references.ts` — バッチ解析関数の追加
+- `src/mcp/server.ts` — `batch_analyze_references` ツールの登録
+- テストファイルの新規追加
+
+#### 実装タスク
+
+- `batchAnalyzeReferences` 関数を追加する
+  - 入力: `sourceText` + `targets: ReferenceTarget[]`（テキスト版）
+  - 入力: `filePath` + `targets: ReferenceTarget[]`（ファイル版）
+  - 入力: `projectRoot` + `entryFile` + `targets: ReferenceTarget[]`（横断版、REQ-A01 前提）
+- 1 回のファイル読み込み・`Project` 構築で複数 target を処理する
+- 戻り値は `Map<string, ReferenceAnalysis>` または target ごとの配列
+- 単発 API と結果が一致することを保証する
+- MCP ツール `batch_analyze_references` を登録する
+
+#### 完了条件
+
+- [ ] 3 target 以上を 1 回の呼び出しで解析できる
+- [ ] 単発 API で同じ target を個別解析した結果と一致する
+- [ ] MCP ツールとして登録されている
+
+#### 依存
+
+REQ-A01（プロジェクト横断版を含む場合）。テキスト版・ファイル版は REQ-A01 なしでも実装可能。
+
+---
+
+## 7. Phase 4: 将来拡張
+
+### 7.1 REQ-A07: `rename_symbol`
+
+#### 目的
+
+シンボル名変更を AST ベースで安全に適用する。
+
+#### 前提条件
+
+REQ-A01（プロジェクト横断参照）が完了していること。
+
+#### 実装タスク
+
+- `rename_symbol` 用の patch operation スキーマを追加する
+  - 入力: `file`, `target` (kind + name), `newName`
+- 対象シンボルの定義箇所と全参照箇所を更新する
+- プロジェクト横断で参照を追跡し、他ファイルの import / 利用箇所も更新する
+- 変更結果はファイルごとの diff で返す
+
+#### 完了条件
+
+- [ ] シンボル名変更を AST ベースで適用できる
+- [ ] 他ファイルの参照も含めて更新される
+- [ ] 変更前後で構文エラーが発生しない
+
+---
+
+## 8. 技術設計メモ
+
+### 8.1 `project.ts` の拡張（REQ-A01 向け）
+
+現在の `loadSourceDocumentFromText` / `loadSourceDocumentFromFile` はいずれも `useInMemoryFileSystem: true` で `Project` を構築している。横断参照には tsconfig を解決できるディスクベースの `Project` が必要。
+
+- `loadSourceDocumentFromText` は維持する（単一ファイル操作用）
+- ディスクベースの `Project` を構築する新関数を追加する
+  - tsconfig.json を読み込み、ファイルシステムから SourceFile を解決する
+  - 初回構築のコストが高いため、キャッシュ戦略を検討する
+
+### 8.2 `references.ts` の拡張（REQ-A03, REQ-A01 向け）
+
+- `ReferenceAnalysis` に `isExported` と `exportKind` を追加する（REQ-A03）
+- `ReferenceLocation` に `file?: string` と `isDefinition?: boolean` を追加する（REQ-A01）
+  - 単一ファイル解析時はこれらを省略し、後方互換を保つ
+- クロスファイル探索は `analyzeReferencesFromProject` のような別関数に分離する
+
+### 8.3 `diff.ts` の拡張（REQ-A02 向け）
+
+- 現在は `createPatchDiff`（diff 生成）のみ。diff 解析関数を同ファイルに追加する
+- unified diff をパースし、変更行を特定 → sourceText の AST と突合する構成
+
+### 8.4 `schema/patch.ts` の拡張（REQ-A05, REQ-A06 向け）
+
+- `updateFunctionSchema` の `changes` を union 化: `add_param` | `remove_param`
+- `updateInterfaceSchema` の `changes` を union 化: `add_property` | `remove_property`
+- `removeImportSchema` の `named` を optional にする
+
+### 8.5 `mcp/server.ts` の拡張
+
+| REQ | 追加ツール |
+|-----|-----------|
+| REQ-A01 | `analyze_references_from_project` |
+| REQ-A04 | `batch_analyze_references` |
+
+既存の 6 ツールは変更なし。入力検証は Zod スキーマ、エラー形式は `toToolErrorResult` を踏襲する。
+
+---
+
+## 9. リスクと対策
+
+| # | リスク | 対象 REQ | 対策 |
+|---|--------|----------|------|
+| 1 | プロジェクト横断解析の性能劣化 | REQ-A01, REQ-A04 | `maxDepth` で探索範囲を制限する。`Project` のキャッシュを検討する |
+| 2 | export 判定の曖昧さ（re-export 等） | REQ-A03 | `named` / `default` / `namespace` を明示的に分け、判定不能時は `null` を返す |
+| 3 | diff からのシンボル抽出の誤判定 | REQ-A02 | AST ベースの突合を優先し、行番号のみの推定は補助的に使う |
+| 4 | 削除系操作の冪等性破壊 | REQ-A05, REQ-A06 | 対象不在時は no-op、曖昧一致はエラー。テストで冪等性を検証する |
+| 5 | 利用者との仕様ズレ | 全体 | MCP レスポンス形式を固定し、`contract.test.ts` で LIB/MCP の一貫性を検証する |
+
+---
+
+## 10. 完了基準
+
+本計画のすべての REQ が完了した時点で、以下が成立していること。
+
+- [ ] 参照解析が単一ファイルと複数ファイルの両方で動作する（REQ-A01）
+- [ ] diff から変更シンボルを AST ベースで抽出できる（REQ-A02）
+- [ ] export 情報を含めた解析結果を返せる（REQ-A03）
+- [ ] 関数引数・interface プロパティの削除ができる（REQ-A05）
+- [ ] import 宣言全体の削除ができる（REQ-A06）
+- [ ] バッチ解析で MCP 往復を削減できる（REQ-A04）
+- [ ] 既存の 48 テストがすべて通る（後方互換）
+- [ ] 新規 REQ ごとにテストが追加されている
+
 

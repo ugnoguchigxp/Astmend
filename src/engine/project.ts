@@ -60,3 +60,37 @@ export const loadSourceDocumentFromFile = async (filePath: string): Promise<Sour
     throw error;
   }
 };
+
+export const loadSourceDocumentFromProjectRoot = async (
+  projectRoot: string,
+  entryFile: string,
+): Promise<SourceDocument> => {
+  const normalizedProjectRoot = path.resolve(projectRoot);
+  const tsconfigPath = path.join(normalizedProjectRoot, 'tsconfig.json');
+
+  try {
+    await fs.access(tsconfigPath);
+  } catch {
+    throw new AstmendError('FILE_NOT_FOUND', `File not found: ${tsconfigPath}`);
+  }
+
+  const project = new Project({
+    tsConfigFilePath: tsconfigPath,
+    manipulationSettings: {
+      quoteKind: QuoteKind.Single,
+      indentationText: IndentationText.TwoSpaces,
+    },
+  });
+
+  const normalizedEntryFile = path.isAbsolute(entryFile)
+    ? path.normalize(entryFile)
+    : path.resolve(normalizedProjectRoot, entryFile);
+
+  const sourceFile = project.getSourceFile(normalizedEntryFile) ?? project.addSourceFileAtPath(normalizedEntryFile);
+
+  return {
+    project,
+    sourceFilePath: sourceFile.getFilePath(),
+    sourceText: sourceFile.getFullText(),
+  };
+};
