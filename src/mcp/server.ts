@@ -38,6 +38,26 @@ const renameOperationInputSchema = z.object({
   newName: z.string().min(1),
 });
 
+const batchAnalyzeReferencesInputSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('text'),
+    sourceText: z.string(),
+    targets: z.array(referenceTargetSchema).min(1),
+    filePath: z.string().optional(),
+  }),
+  z.object({
+    mode: z.literal('file'),
+    filePath: z.string().min(1),
+    targets: z.array(referenceTargetSchema).min(1),
+  }),
+  z.object({
+    mode: z.literal('project'),
+    projectRoot: z.string().min(1),
+    entryFile: z.string().min(1),
+    targets: z.array(referenceTargetSchema).min(1),
+  }),
+]);
+
 export const createServer = () => {
   const server = new McpServer({
     name: 'astmend-mcp',
@@ -174,6 +194,39 @@ export const createServer = () => {
     async ({ sourceText, targets, filePath }) => {
       try {
         return toToolSuccessResult(batchAnalyzeReferencesFromText(sourceText, targets, filePath));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'batch_analyze_references',
+    {
+      title: 'Batch Analyze References',
+      description: 'Analyze references and impacted declarations for multiple targets.',
+      inputSchema: batchAnalyzeReferencesInputSchema,
+    },
+    async (input) => {
+      try {
+        switch (input.mode) {
+          case 'text':
+            return toToolSuccessResult(
+              batchAnalyzeReferencesFromText(input.sourceText, input.targets, input.filePath),
+            );
+          case 'file':
+            return toToolSuccessResult(
+              await batchAnalyzeReferencesFromFile(input.filePath, input.targets),
+            );
+          case 'project':
+            return toToolSuccessResult(
+              await batchAnalyzeReferencesFromProject(
+                input.projectRoot,
+                input.entryFile,
+                input.targets,
+              ),
+            );
+        }
       } catch (error) {
         return toToolErrorResult(error);
       }

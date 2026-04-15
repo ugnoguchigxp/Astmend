@@ -20,6 +20,7 @@ describe('mcp server tool registration', () => {
     const tools = getTools();
     expect(Object.keys(tools).sort()).toEqual(
       [
+        'batch_analyze_references',
         'analyze_references_from_project',
         'batch_analyze_references_from_file',
         'batch_analyze_references_from_project',
@@ -185,6 +186,75 @@ foo();
     });
     expect(impactTextResult.structuredContent).toHaveProperty('result');
     expect(impactFileResult.structuredContent).toHaveProperty('result');
+  });
+
+  it('handles batch analyze references tool variants', async () => {
+    const tools = getTools();
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'astmend-mcp-batch-'));
+    const filePath = path.join(tempDir, 'sample.ts');
+    await writeFile(
+      filePath,
+      `function foo() { return 1; }
+function bar() { return foo(); }
+const value = foo();
+`,
+      'utf8',
+    );
+
+    await writeFile(
+      path.join(tempDir, 'tsconfig.json'),
+      `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts"]
+}
+`,
+      'utf8',
+    );
+
+    const textResult = await tools.batch_analyze_references.handler({
+      mode: 'text',
+      sourceText: `function foo() { return 1; }
+function bar() { return foo(); }
+const value = foo();
+`,
+      targets: [
+        { kind: 'function', name: 'foo' },
+        { kind: 'function', name: 'bar' },
+      ],
+    });
+
+    const fileResult = await tools.batch_analyze_references.handler({
+      mode: 'file',
+      filePath,
+      targets: [
+        { kind: 'function', name: 'foo' },
+        { kind: 'function', name: 'bar' },
+      ],
+    });
+
+    const projectResult = await tools.batch_analyze_references.handler({
+      mode: 'project',
+      projectRoot: tempDir,
+      entryFile: 'sample.ts',
+      targets: [
+        { kind: 'function', name: 'foo' },
+        { kind: 'function', name: 'bar' },
+      ],
+    });
+
+    expect(textResult.isError).toBeUndefined();
+    expect(fileResult.isError).toBeUndefined();
+    expect(projectResult.isError).toBeUndefined();
+    expect(textResult.structuredContent).toHaveProperty('result');
+    expect(fileResult.structuredContent).toHaveProperty('result');
+    expect(projectResult.structuredContent).toHaveProperty('result');
   });
 
   it('handles rename symbol tool variants', async () => {
