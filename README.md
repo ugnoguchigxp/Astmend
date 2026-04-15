@@ -25,13 +25,17 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
 
 - パッチ適用
   - `update_function`（関数パラメータ追加）
+  - `rename_symbol`（同一ファイル内のシンボル名変更）
   - `update_interface`（interface プロパティ追加）
   - `add_import`
   - `remove_import`
   - `update_constructor`（constructor パラメータ追加）
 - 解析
   - 参照解析（`analyzeReferences*`）
+  - バッチ参照解析（`batchAnalyzeReferences*`）
+  - プロジェクト横断参照解析（`analyzeReferencesFromProject`）
   - 影響範囲検出（`detectImpact*`）
+  - export 情報の付与（`isExported`, `exportKind`）
 - 入力検証
   - Zod スキーマによる命令バリデーション
   - 構造化された診断情報の返却 (`ApplyResponse`)
@@ -54,6 +58,13 @@ npm run check
 ```bash
 npm run test:watch
 ```
+
+## OSS 向けの補助ファイル
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
+- [SECURITY.md](./SECURITY.md)
+- [CHANGELOG.md](./CHANGELOG.md)
 
 ## 使い方（ライブラリ）
 

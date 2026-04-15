@@ -39,6 +39,22 @@ npm run mcp:start
 - `args` は `dist/mcp/server.js` の絶対パス
 - `cwd` はこのリポジトリの絶対パス
 
+## 提供ツール
+
+- `apply_patch_to_text`
+- `apply_patch_from_file`
+- `analyze_references_from_text`
+- `analyze_references_from_file`
+- `analyze_references_from_project`
+- `batch_analyze_references`
+- `batch_analyze_references_from_text`
+- `batch_analyze_references_from_file`
+- `batch_analyze_references_from_project`
+- `detect_impact_from_text`
+- `detect_impact_from_file`
+- `rename_symbol_from_text`
+- `rename_symbol_from_file`
+
 ## 運用メモ
 
 - 低頻度呼び出しなら `stdio` 実行で十分です。
