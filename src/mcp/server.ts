@@ -17,7 +17,6 @@ import {
 import { toToolErrorResult, toToolSuccessResult } from './results.js';
 
 const patchOperationInputSchema = z.record(z.string(), z.unknown());
-
 const referenceTargetKindSchema = z.enum([
   'function',
   'interface',
@@ -30,6 +29,13 @@ const referenceTargetKindSchema = z.enum([
 const referenceTargetSchema = z.object({
   kind: referenceTargetKindSchema,
   name: z.string().min(1),
+});
+
+const renameOperationInputSchema = z.object({
+  type: z.literal('rename_symbol'),
+  file: z.string().min(1),
+  target: referenceTargetSchema,
+  newName: z.string().min(1),
 });
 
 export const createServer = () => {
@@ -229,6 +235,43 @@ export const createServer = () => {
         return toToolSuccessResult(
           await batchAnalyzeReferencesFromProject(projectRoot, entryFile, targets),
         );
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'rename_symbol_from_text',
+    {
+      title: 'Rename Symbol From Text',
+      description: 'Rename a symbol and its references in source text.',
+      inputSchema: z.object({
+        operation: renameOperationInputSchema,
+        sourceText: z.string(),
+      }),
+    },
+    async ({ operation, sourceText }) => {
+      try {
+        return toToolSuccessResult(applyPatchToText(operation, sourceText));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    'rename_symbol_from_file',
+    {
+      title: 'Rename Symbol From File',
+      description: 'Rename a symbol and its references in a file.',
+      inputSchema: z.object({
+        operation: renameOperationInputSchema,
+      }),
+    },
+    async ({ operation }) => {
+      try {
+        return toToolSuccessResult(await applyPatchFromFile(operation));
       } catch (error) {
         return toToolErrorResult(error);
       }

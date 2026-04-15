@@ -30,6 +30,8 @@ describe('mcp server tool registration', () => {
         'apply_patch_to_text',
         'detect_impact_from_file',
         'detect_impact_from_text',
+        'rename_symbol_from_file',
+        'rename_symbol_from_text',
       ].sort(),
     );
   });
@@ -183,5 +185,56 @@ foo();
     });
     expect(impactTextResult.structuredContent).toHaveProperty('result');
     expect(impactFileResult.structuredContent).toHaveProperty('result');
+  });
+
+  it('handles rename symbol tool variants', async () => {
+    const tools = getTools();
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'astmend-mcp-rename-'));
+    const filePath = path.join(tempDir, 'sample.ts');
+    await writeFile(
+      filePath,
+      `export function getUser(id: string) {
+  return id;
+}
+
+const current = getUser('1');
+`,
+      'utf8',
+    );
+
+    const textResult = await tools.rename_symbol_from_text.handler({
+      operation: {
+        type: 'rename_symbol',
+        file: 'src/sample.ts',
+        target: { kind: 'function', name: 'getUser' },
+        newName: 'fetchUser',
+      },
+      sourceText: `export function getUser(id: string) {
+  return id;
+}
+
+const current = getUser('1');
+`,
+    });
+
+    const fileResult = await tools.rename_symbol_from_file.handler({
+      operation: {
+        type: 'rename_symbol',
+        file: filePath,
+        target: { kind: 'function', name: 'getUser' },
+        newName: 'fetchUser',
+      },
+    });
+
+    expect(textResult.isError).toBeUndefined();
+    expect(fileResult.isError).toBeUndefined();
+    expect(textResult.structuredContent).toMatchObject({
+      success: true,
+      patchedFiles: ['src/sample.ts'],
+    });
+    expect(fileResult.structuredContent).toMatchObject({
+      success: true,
+      patchedFiles: [filePath],
+    });
   });
 });
