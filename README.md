@@ -119,7 +119,21 @@ console.log(result.updatedText);
 
 ## MCP として使う
 
-`stdio` 方式の MCP サーバーを同梱しています。低頻度利用なら常駐化は不要です。
+Astmend の MCP ツールは、共有 MCP ホストから in-process service として読み込めます。
+通常のローカル実行では、長時間動く Astmend 専用 stdio プロセスではなく、共有ホスト側から
+`createAstmendMcpService()` を import して使う構成を推奨します。
+
+```ts
+import { createAstmendMcpService } from 'astmend';
+
+const service = createAstmendMcpService();
+const result = await service.callTool('analyze_references_from_file', {
+  filePath: '/path/to/source.ts',
+  target: { kind: 'function', name: 'main' },
+});
+```
+
+開発・互換性確認用に `stdio` 方式の MCP サーバーも同梱しています。
 
 ```bash
 npm run build
@@ -151,7 +165,7 @@ src/
   ops/      # AST 操作単位の実装
   router.ts # 命令を解釈して操作へルーティング
   index.ts  # 公開 API
-  mcp/      # MCP サーバー実装
+  mcp/      # MCP service と stdio アダプター
 ```
 
 ## ライセンス

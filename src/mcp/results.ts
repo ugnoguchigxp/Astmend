@@ -1,4 +1,13 @@
-import { isAstmendError } from '../index.js';
+import { isAstmendError } from '../engine/errors.js';
+
+export type ToolResult = {
+  isError?: true;
+  structuredContent: Record<string, unknown>;
+  content: {
+    type: 'text';
+    text: string;
+  }[];
+};
 
 const normalizeStructuredContent = (value: unknown): Record<string, unknown> => {
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -8,7 +17,7 @@ const normalizeStructuredContent = (value: unknown): Record<string, unknown> => 
   return { result: value };
 };
 
-export const toToolSuccessResult = (value: unknown) => ({
+export const toToolSuccessResult = (value: unknown): ToolResult => ({
   structuredContent: normalizeStructuredContent(value),
   content: [
     {
@@ -18,7 +27,7 @@ export const toToolSuccessResult = (value: unknown) => ({
   ],
 });
 
-export const toToolErrorResult = (error: unknown) => {
+export const toToolErrorResult = (error: unknown): ToolResult => {
   if (isAstmendError(error)) {
     return {
       isError: true,

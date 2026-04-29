@@ -1,12 +1,12 @@
 export {
+  type AnalyzeChangedSymbolsOptions,
   analyzeChangedSymbolsFromDiff,
   analyzeChangedSymbolsFromText,
-  createPatchDiff,
-  type AnalyzeChangedSymbolsOptions,
   type ChangedSymbol,
   type ChangedSymbolChangeKind,
   type ChangedSymbolKind,
   type ChangedSymbolReport,
+  createPatchDiff,
 } from './engine/diff.js';
 export {
   type ApplyReason,
@@ -18,12 +18,12 @@ export { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './engine
 export {
   analyzeReferences,
   analyzeReferencesFromFile,
-  analyzeReferencesFromText,
   analyzeReferencesFromProject,
+  analyzeReferencesFromText,
   batchAnalyzeReferences,
   batchAnalyzeReferencesFromFile,
-  batchAnalyzeReferencesFromText,
   batchAnalyzeReferencesFromProject,
+  batchAnalyzeReferencesFromText,
   detectImpactFromFile,
   detectImpactFromText,
   type ExportKind,
@@ -33,6 +33,12 @@ export {
   type ReferenceTarget,
   type ReferenceTargetKind,
 } from './engine/references.js';
+export type { ToolResult } from './mcp/results.js';
+export {
+  type AstmendMcpService,
+  type AstmendMcpToolDefinition,
+  createAstmendMcpService,
+} from './mcp/service.js';
 export { addImport } from './ops/addImport.js';
 export { removeImport } from './ops/removeImport.js';
 export { renameSymbol } from './ops/renameSymbol.js';
@@ -50,8 +56,8 @@ export {
   type PatchOperation,
   patchOperationSchema,
   type RemoveImportOperation,
-  removeImportSchema,
   type RenameSymbolOperation,
+  removeImportSchema,
   renameSymbolSchema,
   type UpdateConstructorOperation,
   type UpdateFunctionOperation,

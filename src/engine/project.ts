@@ -86,7 +86,8 @@ export const loadSourceDocumentFromProjectRoot = async (
     ? path.normalize(entryFile)
     : path.resolve(normalizedProjectRoot, entryFile);
 
-  const sourceFile = project.getSourceFile(normalizedEntryFile) ?? project.addSourceFileAtPath(normalizedEntryFile);
+  const sourceFile =
+    project.getSourceFile(normalizedEntryFile) ?? project.addSourceFileAtPath(normalizedEntryFile);
 
   return {
     project,

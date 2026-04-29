@@ -1,4 +1,4 @@
-import { parsePatch, createTwoFilesPatch } from 'diff';
+import { createTwoFilesPatch, parsePatch } from 'diff';
 import type { ClassDeclaration, InterfaceDeclaration, Node, SourceFile } from 'ts-morph';
 import { loadSourceDocumentFromText } from './project.js';
 
@@ -243,7 +243,14 @@ const collectSymbolSpans = (sourceFile: SourceFile): SymbolSpan[] => {
     }
 
     spans.push(
-      createSpan(declaration, 'function', name, `function:${name}`, undefined, getDeclarationExportInfo(declaration)),
+      createSpan(
+        declaration,
+        'function',
+        name,
+        `function:${name}`,
+        undefined,
+        getDeclarationExportInfo(declaration),
+      ),
     );
   }
 
@@ -255,7 +262,14 @@ const collectSymbolSpans = (sourceFile: SourceFile): SymbolSpan[] => {
 
     const classKey = `class:${name}`;
     spans.push(
-      createSpan(declaration, 'class', name, classKey, undefined, getDeclarationExportInfo(declaration)),
+      createSpan(
+        declaration,
+        'class',
+        name,
+        classKey,
+        undefined,
+        getDeclarationExportInfo(declaration),
+      ),
     );
     spans.push(...collectClassMemberSpans(declaration));
   }
@@ -370,7 +384,10 @@ const getExclusiveChangedLines = (
   return exclusiveLines;
 };
 
-const hasChangedText = (beforeSymbol: SymbolSpan | undefined, afterSymbol: SymbolSpan | undefined) => {
+const hasChangedText = (
+  beforeSymbol: SymbolSpan | undefined,
+  afterSymbol: SymbolSpan | undefined,
+) => {
   if (!beforeSymbol || !afterSymbol) {
     return true;
   }
@@ -378,7 +395,10 @@ const hasChangedText = (beforeSymbol: SymbolSpan | undefined, afterSymbol: Symbo
   return beforeSymbol.text !== afterSymbol.text;
 };
 
-const toChangedSymbol = (symbol: SymbolSpan, changeKind: ChangedSymbolChangeKind): ChangedSymbol => ({
+const toChangedSymbol = (
+  symbol: SymbolSpan,
+  changeKind: ChangedSymbolChangeKind,
+): ChangedSymbol => ({
   kind: symbol.kind,
   name: symbol.name,
   changeKind,
@@ -419,7 +439,9 @@ const pruneSymbols = (
       .filter((other) => other.key !== match.key)
       .map((other) => beforeSpans.get(other.key))
       .filter((value): value is SymbolSpan => Boolean(value))
-      .filter((candidate) => (beforeParentSpan ? containsSpan(beforeParentSpan, candidate) : false));
+      .filter((candidate) =>
+        beforeParentSpan ? containsSpan(beforeParentSpan, candidate) : false,
+      );
 
     const afterDescendantSpans = matches
       .filter((other) => other.key !== match.key)
@@ -462,11 +484,17 @@ const analyzePatchSymbols = (
   const beforeDocument = beforeText ? loadSourceDocumentFromText(filePath, beforeText) : undefined;
   const afterDocument = afterText ? loadSourceDocumentFromText(filePath, afterText) : undefined;
 
-  const beforeSourceFile = beforeDocument?.project.getSourceFileOrThrow(beforeDocument.sourceFilePath);
+  const beforeSourceFile = beforeDocument?.project.getSourceFileOrThrow(
+    beforeDocument.sourceFilePath,
+  );
   const afterSourceFile = afterDocument?.project.getSourceFileOrThrow(afterDocument.sourceFilePath);
 
-  const beforeSpans = beforeSourceFile ? createSymbolMap(beforeSourceFile) : new Map<string, SymbolSpan>();
-  const afterSpans = afterSourceFile ? createSymbolMap(afterSourceFile) : new Map<string, SymbolSpan>();
+  const beforeSpans = beforeSourceFile
+    ? createSymbolMap(beforeSourceFile)
+    : new Map<string, SymbolSpan>();
+  const afterSpans = afterSourceFile
+    ? createSymbolMap(afterSourceFile)
+    : new Map<string, SymbolSpan>();
 
   const allKeys = new Set<string>([...beforeSpans.keys(), ...afterSpans.keys()]);
   const rawMatches: SymbolMatch[] = [];
@@ -540,11 +568,14 @@ export const analyzeChangedSymbolsFromText = (
   afterText: string,
   fileName: string,
 ): ChangedSymbolReport[] =>
-  analyzeChangedSymbolsFromDiff(createTwoFilesPatch(fileName, fileName, beforeText, afterText, '', '', { context: 3 }), {
-    beforeText,
-    sourceText: afterText,
-    filePath: fileName,
-  });
+  analyzeChangedSymbolsFromDiff(
+    createTwoFilesPatch(fileName, fileName, beforeText, afterText, '', '', { context: 3 }),
+    {
+      beforeText,
+      sourceText: afterText,
+      filePath: fileName,
+    },
+  );
 
 export const createPatchDiff = (fileName: string, beforeText: string, afterText: string): string =>
   createTwoFilesPatch(fileName, fileName, beforeText, afterText, '', '', { context: 3 });

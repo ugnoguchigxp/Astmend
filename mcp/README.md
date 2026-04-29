@@ -1,11 +1,13 @@
 # Astmend MCP
 
-このプロジェクトは `stdio` 方式の MCP サーバーとして利用できます。
+このプロジェクトは共有 MCP ホストから in-process service として読み込めます。
+開発・互換性確認用には `stdio` 方式の MCP サーバーも利用できます。
 
 ## 結論
 
-- 常駐サーバーは必須ではありません。
-- MCP クライアントが必要時にプロセス起動する `stdio` 実行方式で運用可能です。
+- 通常の Codex ローカル実行では、Astmend 専用の長時間 stdio プロセスは不要です。
+- 共有 MCP ホストは `createAstmendMcpService()` を import してツールを直接呼び出してください。
+- `mcp:dev` / `mcp:start` は直接 stdio のデバッグ・互換性確認用です。
 
 ## セットアップ
 
@@ -21,7 +23,13 @@ npm install
 npm run build
 ```
 
-3. ローカル確認する。
+3. host-facing service を確認する。
+
+```bash
+node -e "import('./dist/mcp/service.js').then(m => console.log(Object.keys(m)))"
+```
+
+4. 直接 stdio を確認する。
 
 ```bash
 npm run mcp:start
@@ -31,13 +39,22 @@ npm run mcp:start
 
 ## 登録例
 
-登録フォーマットは MCP クライアントにより異なるため、まずは `mcp/config.example.json` の形式をベースに設定してください。
+直接 stdio で登録する場合のフォーマットは MCP クライアントにより異なるため、まずは
+`mcp/config.example.json` の形式をベースに設定してください。
 
 ポイント:
 
 - `command` は `node`
 - `args` は `dist/mcp/server.js` の絶対パス
 - `cwd` はこのリポジトリの絶対パス
+
+共有ホストから使う場合は package root または `astmend/mcp/service` から
+`createAstmendMcpService()` を import します。service は以下を返します。
+
+- `name`
+- `version`
+- `tools`
+- `callTool(name, args)`
 
 ## 提供ツール
 
@@ -57,6 +74,5 @@ npm run mcp:start
 
 ## 運用メモ
 
-- 低頻度呼び出しなら `stdio` 実行で十分です。
-- 高頻度で起動コストが目立つ場合のみ、常駐化やプロセスマネージャ導入を検討してください。
-
+- 直接 stdio は stdin close / transport close に追従して終了します。
+- Astmend 自体には watchdog を持たせず、共有ホスト側のライフサイクル管理に従います。

@@ -7,7 +7,11 @@ type RenameableDeclaration = {
   getNameNode(): { rename(newName: string): void };
 };
 
-const findUniqueRenameTarget = (sourceFile: SourceFile, kind: RenameSymbolOperation['target']['kind'], name: string): RenameableDeclaration => {
+const findUniqueRenameTarget = (
+  sourceFile: SourceFile,
+  kind: RenameSymbolOperation['target']['kind'],
+  name: string,
+): RenameableDeclaration => {
   const matches = (() => {
     switch (kind) {
       case 'function':
@@ -21,7 +25,9 @@ const findUniqueRenameTarget = (sourceFile: SourceFile, kind: RenameSymbolOperat
       case 'enum':
         return sourceFile.getEnums().filter((declaration) => declaration.getName() === name);
       case 'variable':
-        return sourceFile.getVariableDeclarations().filter((declaration) => declaration.getName() === name);
+        return sourceFile
+          .getVariableDeclarations()
+          .filter((declaration) => declaration.getName() === name);
     }
   })();
 

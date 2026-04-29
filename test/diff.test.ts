@@ -100,7 +100,6 @@ export const added = true;
         }),
       ]),
     );
-
   });
 
   it('matches the text-based convenience API', () => {

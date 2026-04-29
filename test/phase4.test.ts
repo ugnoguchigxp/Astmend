@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AstmendError,
   analyzeReferencesFromFile,
-  analyzeReferencesFromText,
   analyzeReferencesFromProject,
-  batchAnalyzeReferencesFromText,
+  analyzeReferencesFromText,
   batchAnalyzeReferencesFromProject,
+  batchAnalyzeReferencesFromText,
   detectImpactFromFile,
   detectImpactFromText,
 } from '../src/index.js';
