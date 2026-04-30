@@ -34,6 +34,23 @@ const renameTargetSchema = z
   })
   .strict();
 
+const callableTargetSchema = z
+  .object({
+    kind: z.enum(['function', 'method']),
+    name: z.string().min(1),
+    id: z.string().min(1).optional(),
+  })
+  .strict();
+
+const propertyTargetSchema = z
+  .object({
+    kind: z.enum(['interface', 'class']),
+    name: z.string().min(1),
+    property: z.string().min(1),
+    id: z.string().min(1).optional(),
+  })
+  .strict();
+
 const namedImportSchema = z
   .object({
     name: z.string().min(1),
@@ -121,6 +138,61 @@ export const renameSymbolSchema = z
   })
   .strict();
 
+export const updateReturnTypeSchema = z
+  .object({
+    type: z.literal('update_return_type'),
+    file: z.string().min(1),
+    target: callableTargetSchema,
+    returnType: z.string().min(1),
+  })
+  .strict();
+
+export const updateParamTypeSchema = z
+  .object({
+    type: z.literal('update_param_type'),
+    file: z.string().min(1),
+    target: callableTargetSchema,
+    paramName: z.string().min(1),
+    paramType: z.string().min(1),
+  })
+  .strict();
+
+export const updatePropertyTypeSchema = z
+  .object({
+    type: z.literal('update_property_type'),
+    file: z.string().min(1),
+    target: propertyTargetSchema,
+    propertyType: z.string().min(1),
+  })
+  .strict();
+
+export const replaceFunctionBodySchema = z
+  .object({
+    type: z.literal('replace_function_body'),
+    file: z.string().min(1),
+    target: callableTargetSchema,
+    bodyText: z.string(),
+  })
+  .strict();
+
+export const addInterfaceExtendsSchema = z
+  .object({
+    type: z.literal('add_interface_extends'),
+    file: z.string().min(1),
+    name: z.string().min(1),
+    extends: z.string().min(1),
+  })
+  .strict();
+
+export const removeInterfaceExtendsSchema = z
+  .object({
+    type: z.literal('remove_interface_extends'),
+    file: z.string().min(1),
+    name: z.string().min(1),
+    extends: z.string().min(1),
+  })
+  .strict();
+
 export const patchOperationSchema = z.discriminatedUnion('type', [
   updateFunctionSchema,
   updateInterfaceSchema,
@@ -128,6 +200,12 @@ export const patchOperationSchema = z.discriminatedUnion('type', [
   removeImportSchema,
   updateConstructorSchema,
   renameSymbolSchema,
+  updateReturnTypeSchema,
+  updateParamTypeSchema,
+  updatePropertyTypeSchema,
+  replaceFunctionBodySchema,
+  addInterfaceExtendsSchema,
+  removeInterfaceExtendsSchema,
 ]);
 
 export type UpdateFunctionOperation = z.infer<typeof updateFunctionSchema>;
@@ -136,4 +214,10 @@ export type AddImportOperation = z.infer<typeof addImportSchema>;
 export type RemoveImportOperation = z.infer<typeof removeImportSchema>;
 export type UpdateConstructorOperation = z.infer<typeof updateConstructorSchema>;
 export type RenameSymbolOperation = z.infer<typeof renameSymbolSchema>;
+export type UpdateReturnTypeOperation = z.infer<typeof updateReturnTypeSchema>;
+export type UpdateParamTypeOperation = z.infer<typeof updateParamTypeSchema>;
+export type UpdatePropertyTypeOperation = z.infer<typeof updatePropertyTypeSchema>;
+export type ReplaceFunctionBodyOperation = z.infer<typeof replaceFunctionBodySchema>;
+export type AddInterfaceExtendsOperation = z.infer<typeof addInterfaceExtendsSchema>;
+export type RemoveInterfaceExtendsOperation = z.infer<typeof removeInterfaceExtendsSchema>;
 export type PatchOperation = z.infer<typeof patchOperationSchema>;

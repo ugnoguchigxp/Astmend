@@ -21,18 +21,28 @@ describe('mcp server tool registration', () => {
     expect(Object.keys(tools).sort()).toEqual(
       [
         'batch_analyze_references',
+        'analyze_code_units_from_file',
+        'analyze_code_units_from_project',
+        'analyze_code_units_from_text',
+        'analyze_import_export_graph_from_file',
+        'analyze_import_export_graph_from_project',
         'analyze_references_from_project',
         'batch_analyze_references_from_file',
         'batch_analyze_references_from_project',
         'batch_analyze_references_from_text',
         'analyze_references_from_file',
         'analyze_references_from_text',
+        'apply_patch_batch_from_file',
+        'apply_patch_batch_to_text',
         'apply_patch_from_file',
         'apply_patch_to_text',
         'detect_impact_from_file',
         'detect_impact_from_text',
         'rename_symbol_from_file',
         'rename_symbol_from_text',
+        'resolve_symbol_candidates_from_file',
+        'resolve_symbol_candidates_from_project',
+        'resolve_symbol_candidates_from_text',
       ].sort(),
     );
   });
@@ -306,5 +316,38 @@ const current = getUser('1');
       success: true,
       patchedFiles: [filePath],
     });
+  });
+
+  it('handles code unit scanner and symbol candidate tools', async () => {
+    const tools = getTools();
+    const textResult = await tools.analyze_code_units_from_text.handler({
+      sourceText: `export function getUser(id: string): string {
+  return id;
+}
+`,
+      filePath: 'src/user.ts',
+      options: { includeTypeMetadata: true },
+    });
+    const candidatesResult = await tools.resolve_symbol_candidates_from_text.handler({
+      sourceText: `function dup() { return 1; }
+function dup() { return 2; }
+`,
+      filePath: 'src/dup.ts',
+      target: { kind: 'function', name: 'dup' },
+      options: { includeNonExported: true },
+    });
+
+    expect(textResult.isError).toBeUndefined();
+    expect(candidatesResult.isError).toBeUndefined();
+    expect(textResult.structuredContent).toHaveProperty('result');
+    expect((textResult.structuredContent as { result: unknown }).result).toEqual([
+      expect.objectContaining({
+        kind: 'function',
+        name: 'getUser',
+        typeMetadata: expect.objectContaining({ returnType: 'string' }),
+      }),
+    ]);
+    expect(candidatesResult.structuredContent).toHaveProperty('result');
+    expect((candidatesResult.structuredContent as { result: unknown[] }).result).toHaveLength(2);
   });
 });

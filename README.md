@@ -30,7 +30,19 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
   - `add_import`
   - `remove_import`
   - `update_constructor`（constructor パラメータ追加）
+  - `update_return_type`
+  - `update_param_type`
+  - `update_property_type`
+  - `replace_function_body`
+  - `add_interface_extends`
+  - `remove_interface_extends`
+  - 単一ファイル内 batch apply
 - 解析
+  - CodeUnit Scanner（関数・class・interface・type alias・enum・変数・メンバーの一覧化）
+  - Symbol Candidate 解決
+  - Type metadata 抽出
+  - AST fingerprint 生成
+  - import/export graph 解析
   - 参照解析（`analyzeReferences*`）
   - バッチ参照解析（`batchAnalyzeReferences*`）
   - プロジェクト横断参照解析（`analyzeReferencesFromProject`）
@@ -91,6 +103,61 @@ console.log(result.diff);         // unified diff
 console.log(result.updatedText);
 ```
 
+### CodeUnit Scanner
+
+```ts
+import { analyzeCodeUnitsFromText } from 'astmend';
+
+const units = analyzeCodeUnitsFromText(source, {
+  includeMembers: true,
+  includeTypeMetadata: true,
+  includeAstHash: true,
+});
+
+console.log(units[0]?.id);
+console.log(units[0]?.typeMetadata);
+console.log(units[0]?.astHash);
+```
+
+### Import / Export Graph
+
+```ts
+import { analyzeImportExportGraphFromProject } from 'astmend';
+
+const graph = await analyzeImportExportGraphFromProject('/path/to/project');
+console.log(graph.files[0]?.imports);
+console.log(graph.files[0]?.exports);
+```
+
+### Batch Apply
+
+```ts
+import { applyPatchBatchToText } from 'astmend';
+
+const result = applyPatchBatchToText(
+  {
+    file: 'src/userService.ts',
+    operations: [
+      {
+        type: 'add_import',
+        file: 'src/userService.ts',
+        module: './types',
+        named: [{ name: 'User' }],
+      },
+      {
+        type: 'update_return_type',
+        file: 'src/userService.ts',
+        target: { kind: 'function', name: 'getUser' },
+        returnType: 'User',
+      },
+    ],
+  },
+  source,
+);
+
+console.log(result.diff);
+```
+
 ### 失敗時のレスポンス
 
 失敗時は `success: false` となり、`rejects` に詳細な理由が含まれます。
@@ -127,9 +194,9 @@ Astmend の MCP ツールは、共有 MCP ホストから in-process service と
 import { createAstmendMcpService } from 'astmend';
 
 const service = createAstmendMcpService();
-const result = await service.callTool('analyze_references_from_file', {
+const result = await service.callTool('analyze_code_units_from_file', {
   filePath: '/path/to/source.ts',
-  target: { kind: 'function', name: 'main' },
+  options: { includeTypeMetadata: true },
 });
 ```
 

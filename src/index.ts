@@ -14,6 +14,19 @@ export {
   isAstmendError,
   mapErrorCodeToReason,
 } from './engine/errors.js';
+export {
+  generateAstFingerprint,
+  generateAstFingerprintFromFile,
+  generateAstFingerprintFromText,
+  getNormalizedAstStructure,
+} from './engine/fingerprint.js';
+export {
+  analyzeImportExportGraphFromFile,
+  analyzeImportExportGraphFromProject,
+  type ExportInfo,
+  type ImportEdge,
+  type ImportExportGraph,
+} from './engine/importExportGraph.js';
 export { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './engine/project.js';
 export {
   analyzeReferences,
@@ -33,6 +46,19 @@ export {
   type ReferenceTarget,
   type ReferenceTargetKind,
 } from './engine/references.js';
+export {
+  analyzeCodeUnitsFromFile,
+  analyzeCodeUnitsFromProject,
+  analyzeCodeUnitsFromText,
+  type CodeUnitInfo,
+  resolveSymbolCandidatesFromFile,
+  resolveSymbolCandidatesFromProject,
+  resolveSymbolCandidatesFromText,
+  type SourceRange,
+  type SymbolCandidate,
+  scanCodeUnits,
+  type TypeMetadata,
+} from './engine/scanner.js';
 export type { ToolResult } from './mcp/results.js';
 export {
   type AstmendMcpService,
@@ -42,27 +68,62 @@ export {
 export { addImport } from './ops/addImport.js';
 export { removeImport } from './ops/removeImport.js';
 export { renameSymbol } from './ops/renameSymbol.js';
+export {
+  addInterfaceExtends,
+  removeInterfaceExtends,
+  replaceFunctionBody,
+  updateParamType,
+  updatePropertyType,
+  updateReturnType,
+} from './ops/structuralUpdates.js';
 export { updateConstructor } from './ops/updateConstructor.js';
 export {
   type ApplyReject,
   type ApplyResponse,
+  applyPatchBatchFromFile,
+  applyPatchBatchToText,
   applyPatchFromFile,
   applyPatchToText,
+  parsePatchBatchOperation,
   parsePatchOperation,
 } from './router.js';
 export {
+  type AnalyzeCodeUnitsOptions,
+  analyzeCodeUnitsOptionsSchema,
+  type CodeUnitKind,
+  codeUnitKindSchema,
+  type ReferenceTargetInput,
+  referenceTargetSchema,
+} from './schema/analysis.js';
+export {
+  type PatchBatchOperation,
+  patchBatchOperationSchema,
+} from './schema/batch.js';
+export {
   type AddImportOperation,
+  type AddInterfaceExtendsOperation,
   addImportSchema,
+  addInterfaceExtendsSchema,
   type PatchOperation,
   patchOperationSchema,
   type RemoveImportOperation,
+  type RemoveInterfaceExtendsOperation,
   type RenameSymbolOperation,
+  type ReplaceFunctionBodyOperation,
   removeImportSchema,
+  removeInterfaceExtendsSchema,
   renameSymbolSchema,
+  replaceFunctionBodySchema,
   type UpdateConstructorOperation,
   type UpdateFunctionOperation,
   type UpdateInterfaceOperation,
+  type UpdateParamTypeOperation,
+  type UpdatePropertyTypeOperation,
+  type UpdateReturnTypeOperation,
   updateConstructorSchema,
   updateFunctionSchema,
   updateInterfaceSchema,
+  updateParamTypeSchema,
+  updatePropertyTypeSchema,
+  updateReturnTypeSchema,
 } from './schema/patch.js';

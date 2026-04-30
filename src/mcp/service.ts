@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import {
+  analyzeImportExportGraphFromFile,
+  analyzeImportExportGraphFromProject,
+} from '../engine/importExportGraph.js';
+import {
   analyzeReferencesFromFile,
   analyzeReferencesFromProject,
   analyzeReferencesFromText,
@@ -9,23 +13,25 @@ import {
   detectImpactFromFile,
   detectImpactFromText,
 } from '../engine/references.js';
-import { applyPatchFromFile, applyPatchToText } from '../router.js';
+import {
+  analyzeCodeUnitsFromFile,
+  analyzeCodeUnitsFromProject,
+  analyzeCodeUnitsFromText,
+  resolveSymbolCandidatesFromFile,
+  resolveSymbolCandidatesFromProject,
+  resolveSymbolCandidatesFromText,
+} from '../engine/scanner.js';
+import {
+  applyPatchBatchFromFile,
+  applyPatchBatchToText,
+  applyPatchFromFile,
+  applyPatchToText,
+} from '../router.js';
+import { analyzeCodeUnitsOptionsSchema, referenceTargetSchema } from '../schema/analysis.js';
 import { type ToolResult, toToolErrorResult, toToolSuccessResult } from './results.js';
 
 const patchOperationInputSchema = z.record(z.string(), z.unknown());
-const referenceTargetKindSchema = z.enum([
-  'function',
-  'interface',
-  'class',
-  'type_alias',
-  'enum',
-  'variable',
-]);
-
-const referenceTargetSchema = z.object({
-  kind: referenceTargetKindSchema,
-  name: z.string().min(1),
-});
+const patchBatchOperationInputSchema = z.record(z.string(), z.unknown());
 
 const renameOperationInputSchema = z.object({
   type: z.literal('rename_symbol'),
@@ -53,6 +59,49 @@ const batchAnalyzeReferencesInputSchema = z.discriminatedUnion('mode', [
     targets: z.array(referenceTargetSchema).min(1),
   }),
 ]);
+
+const analyzeCodeUnitsFromTextInputSchema = z.object({
+  sourceText: z.string(),
+  filePath: z.string().optional(),
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const analyzeCodeUnitsFromFileInputSchema = z.object({
+  filePath: z.string().min(1),
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const analyzeCodeUnitsFromProjectInputSchema = z.object({
+  projectRoot: z.string().min(1),
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const resolveSymbolCandidatesFromTextInputSchema = z.object({
+  sourceText: z.string(),
+  target: referenceTargetSchema,
+  filePath: z.string().optional(),
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const resolveSymbolCandidatesFromFileInputSchema = z.object({
+  filePath: z.string().min(1),
+  target: referenceTargetSchema,
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const resolveSymbolCandidatesFromProjectInputSchema = z.object({
+  projectRoot: z.string().min(1),
+  target: referenceTargetSchema,
+  options: analyzeCodeUnitsOptionsSchema.optional(),
+});
+
+const analyzeImportExportGraphFromFileInputSchema = z.object({
+  filePath: z.string().min(1),
+});
+
+const analyzeImportExportGraphFromProjectInputSchema = z.object({
+  projectRoot: z.string().min(1),
+});
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -84,6 +133,116 @@ const defineTool = <Schema extends z.ZodTypeAny>(definition: {
 
 const tools = [
   defineTool({
+    name: 'analyze_code_units_from_text',
+    title: 'Analyze Code Units From Text',
+    description: 'List AST code units from source text.',
+    inputSchema: analyzeCodeUnitsFromTextInputSchema,
+    handler: ({ sourceText, filePath, options }) => {
+      try {
+        return toToolSuccessResult(analyzeCodeUnitsFromText(sourceText, options, filePath));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'analyze_code_units_from_file',
+    title: 'Analyze Code Units From File',
+    description: 'List AST code units from a file.',
+    inputSchema: analyzeCodeUnitsFromFileInputSchema,
+    handler: async ({ filePath, options }) => {
+      try {
+        return toToolSuccessResult(await analyzeCodeUnitsFromFile(filePath, options));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'analyze_code_units_from_project',
+    title: 'Analyze Code Units From Project',
+    description: 'List AST code units from a TypeScript project.',
+    inputSchema: analyzeCodeUnitsFromProjectInputSchema,
+    handler: async ({ projectRoot, options }) => {
+      try {
+        return toToolSuccessResult(await analyzeCodeUnitsFromProject(projectRoot, options));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'resolve_symbol_candidates_from_text',
+    title: 'Resolve Symbol Candidates From Text',
+    description: 'Resolve AST symbol candidates from source text.',
+    inputSchema: resolveSymbolCandidatesFromTextInputSchema,
+    handler: ({ sourceText, target, filePath, options }) => {
+      try {
+        return toToolSuccessResult(
+          resolveSymbolCandidatesFromText(sourceText, target, options, filePath),
+        );
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'resolve_symbol_candidates_from_file',
+    title: 'Resolve Symbol Candidates From File',
+    description: 'Resolve AST symbol candidates from a file.',
+    inputSchema: resolveSymbolCandidatesFromFileInputSchema,
+    handler: async ({ filePath, target, options }) => {
+      try {
+        return toToolSuccessResult(
+          await resolveSymbolCandidatesFromFile(filePath, target, options),
+        );
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'resolve_symbol_candidates_from_project',
+    title: 'Resolve Symbol Candidates From Project',
+    description: 'Resolve AST symbol candidates from a TypeScript project.',
+    inputSchema: resolveSymbolCandidatesFromProjectInputSchema,
+    handler: async ({ projectRoot, target, options }) => {
+      try {
+        return toToolSuccessResult(
+          await resolveSymbolCandidatesFromProject(projectRoot, target, options),
+        );
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'analyze_import_export_graph_from_file',
+    title: 'Analyze Import Export Graph From File',
+    description: 'Analyze import and export declarations from a file.',
+    inputSchema: analyzeImportExportGraphFromFileInputSchema,
+    handler: async ({ filePath }) => {
+      try {
+        return toToolSuccessResult(await analyzeImportExportGraphFromFile(filePath));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'analyze_import_export_graph_from_project',
+    title: 'Analyze Import Export Graph From Project',
+    description: 'Analyze import and export declarations from a TypeScript project.',
+    inputSchema: analyzeImportExportGraphFromProjectInputSchema,
+    handler: async ({ projectRoot }) => {
+      try {
+        return toToolSuccessResult(await analyzeImportExportGraphFromProject(projectRoot));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
     name: 'apply_patch_to_text',
     title: 'Apply Patch To Text',
     description: 'Apply an Astmend patch operation to source text in memory.',
@@ -110,6 +269,38 @@ const tools = [
     handler: async ({ operation }) => {
       try {
         return toToolSuccessResult(await applyPatchFromFile(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'apply_patch_batch_to_text',
+    title: 'Apply Patch Batch To Text',
+    description: 'Apply multiple Astmend patch operations to source text in memory.',
+    inputSchema: z.object({
+      operation: patchBatchOperationInputSchema,
+      sourceText: z.string(),
+    }),
+    handler: ({ operation, sourceText }) => {
+      try {
+        return toToolSuccessResult(applyPatchBatchToText(operation, sourceText));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'apply_patch_batch_from_file',
+    title: 'Apply Patch Batch From File',
+    description:
+      'Apply multiple Astmend patch operations to a file. This does not write to disk and only returns diff and updated text.',
+    inputSchema: z.object({
+      operation: patchBatchOperationInputSchema,
+    }),
+    handler: async ({ operation }) => {
+      try {
+        return toToolSuccessResult(await applyPatchBatchFromFile(operation));
       } catch (error) {
         return toToolErrorResult(error);
       }

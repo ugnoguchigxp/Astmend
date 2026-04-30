@@ -10,9 +10,18 @@ import { loadSourceDocumentFromFile, loadSourceDocumentFromText } from './engine
 import { addImport } from './ops/addImport.js';
 import { removeImport } from './ops/removeImport.js';
 import { renameSymbol } from './ops/renameSymbol.js';
+import {
+  addInterfaceExtends,
+  removeInterfaceExtends,
+  replaceFunctionBody,
+  updateParamType,
+  updatePropertyType,
+  updateReturnType,
+} from './ops/structuralUpdates.js';
 import { updateConstructor } from './ops/updateConstructor.js';
 import { updateFunction } from './ops/updateFunction.js';
 import { updateInterface } from './ops/updateInterface.js';
+import { type PatchBatchOperation, patchBatchOperationSchema } from './schema/batch.js';
 import { type PatchOperation, patchOperationSchema } from './schema/patch.js';
 
 export interface ApplyReject {
@@ -85,6 +94,42 @@ const executeOperation = (
       changed = result.changed;
       break;
     }
+    case 'update_return_type': {
+      const result = updateReturnType(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'update_param_type': {
+      const result = updateParamType(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'update_property_type': {
+      const result = updatePropertyType(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'replace_function_body': {
+      const result = replaceFunctionBody(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'add_interface_extends': {
+      const result = addInterfaceExtends(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
+    case 'remove_interface_extends': {
+      const result = removeInterfaceExtends(sourceFile, operation);
+      updatedText = result.updatedText;
+      changed = result.changed;
+      break;
+    }
     default:
       throw new AstmendError(
         'UNSUPPORTED_OPERATION',
@@ -115,6 +160,25 @@ export const parsePatchOperation = (input: unknown): PatchOperation => {
       .join('; ');
 
     throw new AstmendError('INVALID_INPUT', `Invalid patch operation: ${message}`);
+  }
+};
+
+export const parsePatchBatchOperation = (input: unknown): PatchBatchOperation => {
+  try {
+    return patchBatchOperationSchema.parse(input);
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      throw error;
+    }
+
+    const message = error.issues
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+        return `${path}: ${issue.message}`;
+      })
+      .join('; ');
+
+    throw new AstmendError('INVALID_INPUT', `Invalid patch batch operation: ${message}`);
   }
 };
 
@@ -199,5 +263,72 @@ export const applyPatchFromFile = async (input: unknown): Promise<ApplyResponse>
       filePath = extractFilePath(input);
     }
     return createErrorResponse(error, filePath);
+  }
+};
+
+const validateBatchFiles = (batch: PatchBatchOperation) => {
+  for (const [index, operation] of batch.operations.entries()) {
+    if (operation.file !== batch.file) {
+      throw new AstmendError(
+        'INVALID_INPUT',
+        `Batch operation ${index} targets ${operation.file}, expected ${batch.file}`,
+      );
+    }
+  }
+};
+
+const applyPatchBatch = (batch: PatchBatchOperation, sourceText: string): ApplyResponse => {
+  validateBatchFiles(batch);
+
+  let currentText = sourceText;
+  const rejects: ApplyReject[] = [];
+  const diagnostics: string[] = [];
+
+  for (const [index, operation] of batch.operations.entries()) {
+    try {
+      const result = executeOperation(operation, currentText);
+      currentText = result.updatedText;
+    } catch (error) {
+      const rejectResponse = createErrorResponse(error, operation.file);
+      rejects.push(...rejectResponse.rejects);
+      diagnostics.push(
+        ...rejectResponse.diagnostics.map((message) => `operation ${index}: ${message}`),
+      );
+
+      if (batch.stopOnReject ?? true) {
+        break;
+      }
+    }
+  }
+
+  const changed = currentText !== sourceText;
+  return {
+    success: rejects.length === 0,
+    patchedFiles: changed ? [batch.file] : [],
+    rejects,
+    diagnostics,
+    diff: changed ? createPatchDiff(batch.file, sourceText, currentText) : '',
+    updatedText: currentText,
+  };
+};
+
+export const applyPatchBatchToText = (input: unknown, sourceText: string): ApplyResponse => {
+  try {
+    const batch = parsePatchBatchOperation(input);
+    return applyPatchBatch(batch, sourceText);
+  } catch (error) {
+    return createErrorResponse(error, extractFilePath(input));
+  }
+};
+
+export const applyPatchBatchFromFile = async (input: unknown): Promise<ApplyResponse> => {
+  let filePath: string | undefined;
+  try {
+    const batch = parsePatchBatchOperation(input);
+    filePath = batch.file;
+    const document = await loadSourceDocumentFromFile(batch.file);
+    return applyPatchBatch(batch, document.sourceText);
+  } catch (error) {
+    return createErrorResponse(error, filePath ?? extractFilePath(input));
   }
 };
