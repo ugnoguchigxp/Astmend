@@ -58,8 +58,24 @@ npm run mcp:start
 
 ## 提供ツール
 
+- `get_capabilities`
+- `validate_patch_operation`
+- `validate_patch_batch_operation`
+- `validate_patch_project_operation`
+- `analyze_code_units_from_text`
+- `analyze_code_units_from_file`
+- `analyze_code_units_from_project`
+- `resolve_symbol_candidates_from_text`
+- `resolve_symbol_candidates_from_file`
+- `resolve_symbol_candidates_from_project`
+- `analyze_import_export_graph_from_file`
+- `analyze_import_export_graph_from_project`
 - `apply_patch_to_text`
 - `apply_patch_from_file`
+- `apply_patch_batch_to_text`
+- `apply_patch_batch_from_file`
+- `apply_patch_batch_to_files`
+- `apply_patch_batch_from_project`
 - `analyze_references_from_text`
 - `analyze_references_from_file`
 - `analyze_references_from_project`

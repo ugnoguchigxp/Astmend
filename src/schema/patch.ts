@@ -1,5 +1,20 @@
 import { z } from 'zod';
 
+export const patchOperationTypes = [
+  'update_function',
+  'update_interface',
+  'add_import',
+  'remove_import',
+  'update_constructor',
+  'rename_symbol',
+  'update_return_type',
+  'update_param_type',
+  'update_property_type',
+  'replace_function_body',
+  'add_interface_extends',
+  'remove_interface_extends',
+] as const;
+
 const addParamSchema = z
   .object({
     name: z.string().min(1),

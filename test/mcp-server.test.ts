@@ -1,8 +1,8 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { createServer } from '../src/mcp/server.js';
+import { describe, expect, it, vi } from 'vitest';
+import { bindServerLifecycle, createServer } from '../src/mcp/server.js';
 
 type RegisteredTool = {
   handler: (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -20,31 +20,98 @@ describe('mcp server tool registration', () => {
     const tools = getTools();
     expect(Object.keys(tools).sort()).toEqual(
       [
-        'batch_analyze_references',
         'analyze_code_units_from_file',
         'analyze_code_units_from_project',
         'analyze_code_units_from_text',
         'analyze_import_export_graph_from_file',
         'analyze_import_export_graph_from_project',
-        'analyze_references_from_project',
-        'batch_analyze_references_from_file',
-        'batch_analyze_references_from_project',
-        'batch_analyze_references_from_text',
         'analyze_references_from_file',
+        'analyze_references_from_project',
         'analyze_references_from_text',
         'apply_patch_batch_from_file',
+        'apply_patch_batch_from_project',
+        'apply_patch_batch_to_files',
         'apply_patch_batch_to_text',
         'apply_patch_from_file',
         'apply_patch_to_text',
+        'batch_analyze_references',
+        'batch_analyze_references_from_file',
+        'batch_analyze_references_from_project',
+        'batch_analyze_references_from_text',
         'detect_impact_from_file',
         'detect_impact_from_text',
+        'get_capabilities',
         'rename_symbol_from_file',
         'rename_symbol_from_text',
         'resolve_symbol_candidates_from_file',
         'resolve_symbol_candidates_from_project',
         'resolve_symbol_candidates_from_text',
+        'validate_patch_batch_operation',
+        'validate_patch_operation',
+        'validate_patch_project_operation',
       ].sort(),
     );
+  });
+});
+
+describe('mcp server lifecycle binding', () => {
+  it('binds transport handlers and closes only once on repeated stdin events', async () => {
+    const close = vi.fn(async () => {});
+    const stderrWrite = vi.fn(() => true);
+    const setExitCode = vi.fn();
+    const listeners: Partial<Record<'end' | 'close', () => void>> = {};
+
+    const transport: {
+      onerror: ((error: Error) => void) | undefined;
+      onclose: (() => void) | undefined;
+    } = {
+      onerror: undefined,
+      onclose: undefined,
+    };
+
+    bindServerLifecycle({ close }, transport, {
+      stdin: {
+        once: (event, listener) => {
+          listeners[event] = listener;
+        },
+      },
+      stderr: { write: stderrWrite },
+      setExitCode,
+    });
+
+    transport.onerror?.(new Error('boom'));
+    transport.onclose?.();
+    listeners.end?.();
+    listeners.close?.();
+    await Promise.resolve();
+
+    expect(stderrWrite).toHaveBeenCalledWith('[astmend-mcp] transport error: boom\n');
+    expect(setExitCode).toHaveBeenCalledWith(0);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a shutdown function that is idempotent', async () => {
+    const close = vi.fn(async () => {});
+    const transport: {
+      onerror: ((error: Error) => void) | undefined;
+      onclose: (() => void) | undefined;
+    } = {
+      onerror: undefined,
+      onclose: undefined,
+    };
+
+    const runtime = bindServerLifecycle({ close }, transport, {
+      stdin: {
+        once: () => {},
+      },
+      stderr: { write: () => true },
+      setExitCode: () => {},
+    });
+
+    await runtime.shutdown();
+    await runtime.shutdown();
+
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -25,9 +25,38 @@ export const createServer = () => {
   return server;
 };
 
-const main = async () => {
-  const server = createServer();
-  const transport = new StdioServerTransport();
+type LifecycleServer = {
+  close: () => Promise<void>;
+};
+
+type LifecycleTransport = {
+  onerror?: (error: Error) => void;
+  onclose?: () => void;
+};
+
+type LifecycleProcess = {
+  stdin: {
+    once: (event: 'end' | 'close', listener: () => void) => void;
+  };
+  stderr: {
+    write: (chunk: string) => boolean;
+  };
+  setExitCode: (code: number) => void;
+};
+
+const defaultLifecycleProcess: LifecycleProcess = {
+  stdin: process.stdin,
+  stderr: process.stderr,
+  setExitCode: (code) => {
+    process.exitCode = code;
+  },
+};
+
+export const bindServerLifecycle = (
+  server: LifecycleServer,
+  transport: LifecycleTransport,
+  lifecycleProcess: LifecycleProcess = defaultLifecycleProcess,
+) => {
   let closing = false;
 
   const shutdown = async () => {
@@ -39,18 +68,28 @@ const main = async () => {
   };
 
   transport.onerror = (error) => {
-    process.stderr.write(`[astmend-mcp] transport error: ${error.message}\n`);
+    lifecycleProcess.stderr.write(`[astmend-mcp] transport error: ${error.message}\n`);
   };
   transport.onclose = () => {
-    process.exitCode = 0;
+    lifecycleProcess.setExitCode(0);
   };
 
-  process.stdin.once('end', () => {
+  lifecycleProcess.stdin.once('end', () => {
     void shutdown();
   });
-  process.stdin.once('close', () => {
+  lifecycleProcess.stdin.once('close', () => {
     void shutdown();
   });
+
+  return {
+    shutdown,
+  };
+};
+
+const main = async () => {
+  const server = createServer();
+  const transport = new StdioServerTransport();
+  bindServerLifecycle(server, transport);
 
   await server.connect(transport);
 };

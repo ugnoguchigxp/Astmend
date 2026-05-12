@@ -23,15 +23,22 @@ import {
 } from '../engine/scanner.js';
 import {
   applyPatchBatchFromFile,
+  applyPatchBatchFromProject,
+  applyPatchBatchToFiles,
   applyPatchBatchToText,
   applyPatchFromFile,
   applyPatchToText,
+  validatePatchBatchOperation,
+  validatePatchOperation,
+  validatePatchProjectOperation,
 } from '../router.js';
 import { analyzeCodeUnitsOptionsSchema, referenceTargetSchema } from '../schema/analysis.js';
+import { patchOperationTypes } from '../schema/patch.js';
 import { type ToolResult, toToolErrorResult, toToolSuccessResult } from './results.js';
 
 const patchOperationInputSchema = z.record(z.string(), z.unknown());
 const patchBatchOperationInputSchema = z.record(z.string(), z.unknown());
+const patchProjectOperationInputSchema = z.record(z.string(), z.unknown());
 
 const renameOperationInputSchema = z.object({
   type: z.literal('rename_symbol'),
@@ -120,6 +127,23 @@ export type AstmendMcpService = {
   callTool: (name: string, args: unknown) => Promise<ToolResult>;
 };
 
+export interface AstmendCapabilities {
+  service: {
+    name: string;
+    version: string;
+  };
+  contractVersion: string;
+  operations: string[];
+  tools: string[];
+  features: {
+    batchSingleFile: boolean;
+    batchMultiFile: boolean;
+    referenceProject: boolean;
+  };
+}
+
+const CONTRACT_VERSION = '2026-05-12';
+
 const defineTool = <Schema extends z.ZodTypeAny>(definition: {
   name: string;
   title: string;
@@ -132,6 +156,66 @@ const defineTool = <Schema extends z.ZodTypeAny>(definition: {
 });
 
 const tools = [
+  defineTool({
+    name: 'get_capabilities',
+    title: 'Get Capabilities',
+    description: 'Return Astmend service capabilities and contract metadata.',
+    inputSchema: z.object({}).strict(),
+    handler: () => {
+      try {
+        return toToolSuccessResult(getAstmendCapabilities());
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'validate_patch_operation',
+    title: 'Validate Patch Operation',
+    description: 'Validate a patch operation against the Astmend schema without applying it.',
+    inputSchema: z.object({
+      operation: patchOperationInputSchema,
+    }),
+    handler: ({ operation }) => {
+      try {
+        return toToolSuccessResult(validatePatchOperation(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'validate_patch_batch_operation',
+    title: 'Validate Patch Batch Operation',
+    description:
+      'Validate a single-file patch batch operation against the Astmend schema without applying it.',
+    inputSchema: z.object({
+      operation: patchBatchOperationInputSchema,
+    }),
+    handler: ({ operation }) => {
+      try {
+        return toToolSuccessResult(validatePatchBatchOperation(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'validate_patch_project_operation',
+    title: 'Validate Patch Project Operation',
+    description:
+      'Validate a multi-file patch batch operation against the Astmend schema without applying it.',
+    inputSchema: z.object({
+      operation: patchProjectOperationInputSchema,
+    }),
+    handler: ({ operation }) => {
+      try {
+        return toToolSuccessResult(validatePatchProjectOperation(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
   defineTool({
     name: 'analyze_code_units_from_text',
     title: 'Analyze Code Units From Text',
@@ -301,6 +385,38 @@ const tools = [
     handler: async ({ operation }) => {
       try {
         return toToolSuccessResult(await applyPatchBatchFromFile(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'apply_patch_batch_to_files',
+    title: 'Apply Patch Batch To Files',
+    description: 'Apply multiple Astmend patch operations to multiple source texts in memory.',
+    inputSchema: z.object({
+      operation: patchProjectOperationInputSchema,
+      sourceTextByFile: z.record(z.string(), z.string()),
+    }),
+    handler: async ({ operation, sourceTextByFile }) => {
+      try {
+        return toToolSuccessResult(await applyPatchBatchToFiles(operation, sourceTextByFile));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'apply_patch_batch_from_project',
+    title: 'Apply Patch Batch From Project',
+    description:
+      'Apply multiple Astmend patch operations across multiple files in a project. This does not write to disk and only returns per-file diffs and updated text.',
+    inputSchema: z.object({
+      operation: patchProjectOperationInputSchema,
+    }),
+    handler: async ({ operation }) => {
+      try {
+        return toToolSuccessResult(await applyPatchBatchFromProject(operation));
       } catch (error) {
         return toToolErrorResult(error);
       }
@@ -507,6 +623,21 @@ const tools = [
     },
   }),
 ] as const;
+
+export const getAstmendCapabilities = (): AstmendCapabilities => ({
+  service: {
+    name: 'astmend-mcp',
+    version: '0.1.0',
+  },
+  contractVersion: CONTRACT_VERSION,
+  operations: [...patchOperationTypes],
+  tools: tools.map((tool) => tool.name),
+  features: {
+    batchSingleFile: true,
+    batchMultiFile: true,
+    referenceProject: true,
+  },
+});
 
 export const createAstmendMcpService = (): AstmendMcpService => {
   const toolMap = new Map(tools.map((tool) => [tool.name, tool]));

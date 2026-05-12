@@ -48,6 +48,7 @@ export const toToolErrorResult = (error: unknown): ToolResult => {
     return {
       isError: true,
       structuredContent: {
+        code: 'INTERNAL_ERROR',
         message: error.message,
       },
       content: [
@@ -62,6 +63,7 @@ export const toToolErrorResult = (error: unknown): ToolResult => {
   return {
     isError: true,
     structuredContent: {
+      code: 'UNKNOWN_ERROR',
       message: 'Unknown error',
     },
     content: [

@@ -61,9 +61,11 @@ export {
 } from './engine/scanner.js';
 export type { ToolResult } from './mcp/results.js';
 export {
+  type AstmendCapabilities,
   type AstmendMcpService,
   type AstmendMcpToolDefinition,
   createAstmendMcpService,
+  getAstmendCapabilities,
 } from './mcp/service.js';
 export { addImport } from './ops/addImport.js';
 export { removeImport } from './ops/removeImport.js';
@@ -78,14 +80,23 @@ export {
 } from './ops/structuralUpdates.js';
 export { updateConstructor } from './ops/updateConstructor.js';
 export {
+  type ApplyProjectOperationResult,
+  type ApplyProjectResponse,
   type ApplyReject,
   type ApplyResponse,
   applyPatchBatchFromFile,
+  applyPatchBatchFromProject,
+  applyPatchBatchToFiles,
   applyPatchBatchToText,
   applyPatchFromFile,
   applyPatchToText,
   parsePatchBatchOperation,
   parsePatchOperation,
+  parsePatchProjectOperation,
+  type ValidationResult,
+  validatePatchBatchOperation,
+  validatePatchOperation,
+  validatePatchProjectOperation,
 } from './router.js';
 export {
   type AnalyzeCodeUnitsOptions,
@@ -97,7 +108,11 @@ export {
 } from './schema/analysis.js';
 export {
   type PatchBatchOperation,
+  type PatchProjectExecutionMode,
+  type PatchProjectOperation,
   patchBatchOperationSchema,
+  patchProjectExecutionModeSchema,
+  patchProjectOperationSchema,
 } from './schema/batch.js';
 export {
   type AddImportOperation,
@@ -106,6 +121,7 @@ export {
   addInterfaceExtendsSchema,
   type PatchOperation,
   patchOperationSchema,
+  patchOperationTypes,
   type RemoveImportOperation,
   type RemoveInterfaceExtendsOperation,
   type RenameSymbolOperation,

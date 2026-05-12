@@ -28,6 +28,7 @@ describe('mcp tool result helpers', () => {
     const result = toToolErrorResult(new Error('boom'));
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toEqual({
+      code: 'INTERNAL_ERROR',
       message: 'boom',
     });
   });
@@ -36,6 +37,7 @@ describe('mcp tool result helpers', () => {
     const result = toToolErrorResult('unknown');
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toEqual({
+      code: 'UNKNOWN_ERROR',
       message: 'Unknown error',
     });
   });

@@ -21,7 +21,12 @@ import {
 import { updateConstructor } from './ops/updateConstructor.js';
 import { updateFunction } from './ops/updateFunction.js';
 import { updateInterface } from './ops/updateInterface.js';
-import { type PatchBatchOperation, patchBatchOperationSchema } from './schema/batch.js';
+import {
+  type PatchBatchOperation,
+  type PatchProjectOperation,
+  patchBatchOperationSchema,
+  patchProjectOperationSchema,
+} from './schema/batch.js';
 import { type PatchOperation, patchOperationSchema } from './schema/patch.js';
 
 export interface ApplyReject {
@@ -40,11 +45,52 @@ export interface ApplyResponse {
   updatedText?: string;
 }
 
+export interface ApplyProjectOperationResult {
+  index: number;
+  file: string;
+  success: boolean;
+  changed: boolean;
+}
+
+export interface ApplyProjectResponse {
+  success: boolean;
+  patchedFiles: string[];
+  rejects: ApplyReject[];
+  diagnostics: string[];
+  diffByFile: Record<string, string>;
+  updatedTextByFile?: Record<string, string>;
+  operationResults: ApplyProjectOperationResult[];
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors?: string[];
+}
+
 interface InternalOperationResult {
   changed: boolean;
   updatedText: string;
   diff: string;
 }
+
+interface ErrorDetails {
+  rejects: ApplyReject[];
+  diagnostics: string[];
+}
+
+const formatZodIssueMessage = (error: ZodError): string =>
+  error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+      return `${path}: ${issue.message}`;
+    })
+    .join('; ');
+
+const formatZodIssues = (error: ZodError): string[] =>
+  error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+    return `${path}: ${issue.message}`;
+  });
 
 const executeOperation = (
   operation: PatchOperation,
@@ -144,6 +190,51 @@ const executeOperation = (
   };
 };
 
+export const validatePatchOperation = (input: unknown): ValidationResult => {
+  const parsed = patchOperationSchema.safeParse(input);
+  if (parsed.success) {
+    return { valid: true };
+  }
+
+  return {
+    valid: false,
+    errors: formatZodIssues(parsed.error),
+  };
+};
+
+export const validatePatchBatchOperation = (input: unknown): ValidationResult => {
+  const parsed = patchBatchOperationSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      valid: false,
+      errors: formatZodIssues(parsed.error),
+    };
+  }
+
+  try {
+    validateBatchFiles(parsed.data);
+  } catch (error) {
+    return {
+      valid: false,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
+  }
+
+  return { valid: true };
+};
+
+export const validatePatchProjectOperation = (input: unknown): ValidationResult => {
+  const parsed = patchProjectOperationSchema.safeParse(input);
+  if (parsed.success) {
+    return { valid: true };
+  }
+
+  return {
+    valid: false,
+    errors: formatZodIssues(parsed.error),
+  };
+};
+
 export const parsePatchOperation = (input: unknown): PatchOperation => {
   try {
     return patchOperationSchema.parse(input);
@@ -152,14 +243,10 @@ export const parsePatchOperation = (input: unknown): PatchOperation => {
       throw error;
     }
 
-    const message = error.issues
-      .map((issue) => {
-        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
-        return `${path}: ${issue.message}`;
-      })
-      .join('; ');
-
-    throw new AstmendError('INVALID_INPUT', `Invalid patch operation: ${message}`);
+    throw new AstmendError(
+      'INVALID_INPUT',
+      `Invalid patch operation: ${formatZodIssueMessage(error)}`,
+    );
   }
 };
 
@@ -171,22 +258,31 @@ export const parsePatchBatchOperation = (input: unknown): PatchBatchOperation =>
       throw error;
     }
 
-    const message = error.issues
-      .map((issue) => {
-        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
-        return `${path}: ${issue.message}`;
-      })
-      .join('; ');
-
-    throw new AstmendError('INVALID_INPUT', `Invalid patch batch operation: ${message}`);
+    throw new AstmendError(
+      'INVALID_INPUT',
+      `Invalid patch batch operation: ${formatZodIssueMessage(error)}`,
+    );
   }
 };
 
-const createErrorResponse = (error: unknown, filePath?: string): ApplyResponse => {
+export const parsePatchProjectOperation = (input: unknown): PatchProjectOperation => {
+  try {
+    return patchProjectOperationSchema.parse(input);
+  } catch (error) {
+    if (!(error instanceof ZodError)) {
+      throw error;
+    }
+
+    throw new AstmendError(
+      'INVALID_INPUT',
+      `Invalid patch project operation: ${formatZodIssueMessage(error)}`,
+    );
+  }
+};
+
+const createErrorDetails = (error: unknown, filePath?: string): ErrorDetails => {
   if (isAstmendError(error)) {
     return {
-      success: false,
-      patchedFiles: [],
       rejects: [
         {
           path: filePath ?? 'unknown',
@@ -194,14 +290,11 @@ const createErrorResponse = (error: unknown, filePath?: string): ApplyResponse =
         },
       ],
       diagnostics: [error.message],
-      diff: '',
     };
   }
 
   const message = error instanceof Error ? error.message : String(error);
   return {
-    success: false,
-    patchedFiles: [],
     rejects: [
       {
         path: filePath ?? 'unknown',
@@ -209,7 +302,30 @@ const createErrorResponse = (error: unknown, filePath?: string): ApplyResponse =
       },
     ],
     diagnostics: [message],
+  };
+};
+
+const createErrorResponse = (error: unknown, filePath?: string): ApplyResponse => {
+  const details = createErrorDetails(error, filePath);
+  return {
+    success: false,
+    patchedFiles: [],
+    rejects: details.rejects,
+    diagnostics: details.diagnostics,
     diff: '',
+  };
+};
+
+const createProjectErrorResponse = (error: unknown, filePath?: string): ApplyProjectResponse => {
+  const details = createErrorDetails(error, filePath);
+  return {
+    success: false,
+    patchedFiles: [],
+    rejects: details.rejects,
+    diagnostics: details.diagnostics,
+    diffByFile: {},
+    updatedTextByFile: {},
+    operationResults: [],
   };
 };
 
@@ -220,6 +336,20 @@ const extractFilePath = (input: unknown): string | undefined => {
 
   const { file } = input as { file?: unknown };
   return typeof file === 'string' ? file : undefined;
+};
+
+const extractProjectFilePath = (input: unknown): string | undefined => {
+  if (typeof input !== 'object' || input === null || !('operations' in input)) {
+    return undefined;
+  }
+
+  const { operations } = input as { operations?: unknown };
+  if (!Array.isArray(operations) || operations.length === 0) {
+    return undefined;
+  }
+
+  const firstOperation = operations[0] as { file?: unknown };
+  return typeof firstOperation?.file === 'string' ? firstOperation.file : undefined;
 };
 
 export const applyPatchToText = (input: unknown, sourceText: string): ApplyResponse => {
@@ -312,6 +442,83 @@ const applyPatchBatch = (batch: PatchBatchOperation, sourceText: string): ApplyR
   };
 };
 
+const applyPatchProjectBatch = async (
+  batch: PatchProjectOperation,
+  loadSourceText: (filePath: string) => Promise<string>,
+): Promise<ApplyProjectResponse> => {
+  const currentTextByFile = new Map<string, string>();
+  const originalTextByFile = new Map<string, string>();
+  const rejects: ApplyReject[] = [];
+  const diagnostics: string[] = [];
+  const operationResults: ApplyProjectOperationResult[] = [];
+
+  for (const [index, operation] of batch.operations.entries()) {
+    try {
+      if (!currentTextByFile.has(operation.file)) {
+        const initialText = await loadSourceText(operation.file);
+        currentTextByFile.set(operation.file, initialText);
+        originalTextByFile.set(operation.file, initialText);
+      }
+
+      const currentText = currentTextByFile.get(operation.file);
+      if (typeof currentText !== 'string') {
+        throw new AstmendError('FILE_NOT_FOUND', `File not loaded: ${operation.file}`);
+      }
+
+      const result = executeOperation(operation, currentText);
+      currentTextByFile.set(operation.file, result.updatedText);
+      operationResults.push({
+        index,
+        file: operation.file,
+        success: true,
+        changed: result.changed,
+      });
+    } catch (error) {
+      const details = createErrorDetails(error, operation.file);
+      rejects.push(...details.rejects);
+      diagnostics.push(...details.diagnostics.map((message) => `operation ${index}: ${message}`));
+      operationResults.push({
+        index,
+        file: operation.file,
+        success: false,
+        changed: false,
+      });
+
+      if (batch.stopOnReject ?? true) {
+        break;
+      }
+    }
+  }
+
+  const patchedFiles: string[] = [];
+  const diffByFile: Record<string, string> = {};
+  const updatedTextByFile: Record<string, string> = {};
+
+  for (const [file, currentText] of currentTextByFile.entries()) {
+    const originalText = originalTextByFile.get(file);
+    if (typeof originalText !== 'string') {
+      continue;
+    }
+
+    updatedTextByFile[file] = currentText;
+
+    if (currentText !== originalText) {
+      patchedFiles.push(file);
+      diffByFile[file] = createPatchDiff(file, originalText, currentText);
+    }
+  }
+
+  return {
+    success: rejects.length === 0,
+    patchedFiles,
+    rejects,
+    diagnostics,
+    diffByFile,
+    updatedTextByFile,
+    operationResults,
+  };
+};
+
 export const applyPatchBatchToText = (input: unknown, sourceText: string): ApplyResponse => {
   try {
     const batch = parsePatchBatchOperation(input);
@@ -330,5 +537,38 @@ export const applyPatchBatchFromFile = async (input: unknown): Promise<ApplyResp
     return applyPatchBatch(batch, document.sourceText);
   } catch (error) {
     return createErrorResponse(error, filePath ?? extractFilePath(input));
+  }
+};
+
+export const applyPatchBatchToFiles = async (
+  input: unknown,
+  sourceTextByFile: Record<string, string>,
+): Promise<ApplyProjectResponse> => {
+  try {
+    const batch = parsePatchProjectOperation(input);
+    return await applyPatchProjectBatch(batch, async (filePath) => {
+      if (!Object.hasOwn(sourceTextByFile, filePath)) {
+        throw new AstmendError('FILE_NOT_FOUND', `File not found: ${filePath}`);
+      }
+      const sourceText = sourceTextByFile[filePath];
+      if (typeof sourceText !== 'string') {
+        throw new AstmendError('INVALID_INPUT', `sourceTextByFile[${filePath}] must be a string`);
+      }
+      return sourceText;
+    });
+  } catch (error) {
+    return createProjectErrorResponse(error, extractProjectFilePath(input));
+  }
+};
+
+export const applyPatchBatchFromProject = async (input: unknown): Promise<ApplyProjectResponse> => {
+  try {
+    const batch = parsePatchProjectOperation(input);
+    return await applyPatchProjectBatch(batch, async (filePath) => {
+      const document = await loadSourceDocumentFromFile(filePath);
+      return document.sourceText;
+    });
+  } catch (error) {
+    return createProjectErrorResponse(error, extractProjectFilePath(input));
   }
 };

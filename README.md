@@ -37,6 +37,7 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
   - `add_interface_extends`
   - `remove_interface_extends`
   - 単一ファイル内 batch apply
+  - 複数ファイル batch apply (`applyPatchBatchToFiles`, `applyPatchBatchFromProject`)
 - 解析
   - CodeUnit Scanner（関数・class・interface・type alias・enum・変数・メンバーの一覧化）
   - Symbol Candidate 解決
@@ -50,7 +51,9 @@ Astmend は「コード編集をテキスト処理から構造処理へ移す」
   - export 情報の付与（`isExported`, `exportKind`）
 - 入力検証
   - Zod スキーマによる命令バリデーション
+  - operation/batch の事前検証 API (`validatePatchOperation*`)
   - 構造化された診断情報の返却 (`ApplyResponse`)
+  - capabilities 契約取得 (`getAstmendCapabilities`)
 
 ## 非ゴール（このリポジトリがやらないこと）
 
@@ -156,6 +159,52 @@ const result = applyPatchBatchToText(
 );
 
 console.log(result.diff);
+```
+
+### Multi-file Batch Apply
+
+```ts
+import { applyPatchBatchToFiles } from 'astmend';
+
+const result = await applyPatchBatchToFiles(
+  {
+    operations: [
+      {
+        type: 'update_function',
+        file: 'src/user.ts',
+        name: 'getUser',
+        changes: { add_param: { name: 'activeOnly', type: 'boolean' } },
+      },
+      {
+        type: 'update_interface',
+        file: 'src/types.ts',
+        name: 'User',
+        changes: { add_property: { name: 'active', type: 'boolean' } },
+      },
+    ],
+  },
+  {
+    'src/user.ts': `export function getUser(id: string) { return id }`,
+    'src/types.ts': `export interface User { id: string }`,
+  },
+);
+
+console.log(result.patchedFiles);
+console.log(result.diffByFile);
+```
+
+### Capabilities / Validation
+
+```ts
+import {
+  getAstmendCapabilities,
+  validatePatchBatchOperation,
+  validatePatchOperation,
+} from 'astmend';
+
+console.log(getAstmendCapabilities().tools);
+console.log(validatePatchOperation({ type: 'update_function' })); // { valid: false, ... }
+console.log(validatePatchBatchOperation({ file: 'a.ts', operations: [] })); // { valid: false, ... }
 ```
 
 ### 失敗時のレスポンス
