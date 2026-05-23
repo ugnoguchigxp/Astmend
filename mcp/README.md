@@ -33,6 +33,7 @@ node -e "import('./dist/mcp/service.js').then(m => console.log(Object.keys(m)))"
 
 ```bash
 npm run mcp:start
+npx astmend mcp
 ```
 
 開発中は `npm run mcp:dev` を使えます。
@@ -85,6 +86,10 @@ npm run mcp:start
 - `batch_analyze_references_from_project`
 - `detect_impact_from_text`
 - `detect_impact_from_file`
+- `get_context`
+- `extract_routes`
+- `extract_db_queries`
+- `get_risk_hints`
 - `rename_symbol_from_text`
 - `rename_symbol_from_file`
 

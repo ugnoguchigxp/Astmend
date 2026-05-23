@@ -1,5 +1,55 @@
+import { execFile as execFileCallback } from 'node:child_process';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { createAstmendMcpService } from '../src/mcp/service.js';
+
+const execFile = promisify(execFileCallback);
+
+const runGit = async (cwd: string, args: string[]): Promise<string> => {
+  const { stdout } = await execFile('git', ['-C', cwd, ...args], {
+    maxBuffer: 1024 * 1024 * 10,
+  });
+  return stdout;
+};
+
+const setupMcpRepo = async (): Promise<string> => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'astmend-mcp-context-'));
+  await mkdir(path.join(repoRoot, 'src'), { recursive: true });
+  await runGit(repoRoot, ['init']);
+  await runGit(repoRoot, ['config', 'user.email', 'astmend@example.com']);
+  await runGit(repoRoot, ['config', 'user.name', 'Astmend Test']);
+
+  await writeFile(
+    path.join(repoRoot, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { target: 'ES2022' }, include: ['src/**/*.ts'] }, null, 2),
+    'utf8',
+  );
+  await writeFile(
+    path.join(repoRoot, 'src', 'app.ts'),
+    `export function hello(name: string) {
+  return name;
+}
+`,
+    'utf8',
+  );
+  await runGit(repoRoot, ['add', '.']);
+  await runGit(repoRoot, ['commit', '-m', 'initial']);
+  await writeFile(
+    path.join(repoRoot, 'src', 'app.ts'),
+    `export function hello(name: string, loud: boolean) {
+  return loud ? name.toUpperCase() : name;
+}
+`,
+    'utf8',
+  );
+  await runGit(repoRoot, ['add', '.']);
+  await runGit(repoRoot, ['commit', '-m', 'updated']);
+
+  return repoRoot;
+};
 
 describe('mcp service contract', () => {
   it('exposes host-callable tool definitions without stdio transport', async () => {
@@ -29,7 +79,11 @@ describe('mcp service contract', () => {
         'batch_analyze_references_from_text',
         'detect_impact_from_file',
         'detect_impact_from_text',
+        'extract_db_queries',
+        'extract_routes',
+        'get_context',
         'get_capabilities',
+        'get_risk_hints',
         'rename_symbol_from_file',
         'rename_symbol_from_text',
         'resolve_symbol_candidates_from_file',
@@ -60,8 +114,45 @@ describe('mcp service contract', () => {
       expect.arrayContaining(['update_function', 'replace_function_body']),
     );
     expect(result.structuredContent.tools).toEqual(
-      expect.arrayContaining(['get_capabilities', 'apply_patch_batch_from_project']),
+      expect.arrayContaining(['get_capabilities', 'get_context', 'apply_patch_batch_from_project']),
     );
+  });
+
+  it('returns context packet via get_context tool', async () => {
+    const repoRoot = await setupMcpRepo();
+    const service = createAstmendMcpService();
+    const result = await service.callTool('get_context', {
+      repoRoot,
+      base: 'HEAD~1',
+      head: 'HEAD',
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      schemaVersion: '0.1.0',
+    });
+  });
+
+  it('returns extraction results through context helper tools', async () => {
+    const repoRoot = await setupMcpRepo();
+    const service = createAstmendMcpService();
+
+    const routes = await service.callTool('extract_routes', { repoRoot, files: ['src/app.ts'] });
+    const dbQueries = await service.callTool('extract_db_queries', {
+      repoRoot,
+      files: ['src/app.ts'],
+    });
+    const riskHints = await service.callTool('get_risk_hints', { repoRoot, files: ['src/app.ts'] });
+
+    expect(routes.isError).toBeUndefined();
+    expect(dbQueries.isError).toBeUndefined();
+    expect(riskHints.isError).toBeUndefined();
+    expect(routes.structuredContent).toHaveProperty('items');
+    expect(routes.structuredContent).toHaveProperty('warnings');
+    expect(dbQueries.structuredContent).toHaveProperty('items');
+    expect(dbQueries.structuredContent).toHaveProperty('warnings');
+    expect(riskHints.structuredContent).toHaveProperty('items');
+    expect(riskHints.structuredContent).toHaveProperty('warnings');
   });
 
   it('validates multi-file patch batches without applying changes', async () => {

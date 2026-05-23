@@ -74,6 +74,23 @@ npm run check
 npm run test:watch
 ```
 
+### CLI (npx / global)
+
+```bash
+npx astmend version
+npx astmend context --base main --head HEAD --format json
+npx astmend mcp
+```
+
+global install:
+
+```bash
+npm install -g astmend
+astmend version
+astmend context --base main --head HEAD --format json
+astmend mcp
+```
+
 ## OSS 向けの補助ファイル
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md)
@@ -130,6 +147,27 @@ import { analyzeImportExportGraphFromProject } from 'astmend';
 const graph = await analyzeImportExportGraphFromProject('/path/to/project');
 console.log(graph.files[0]?.imports);
 console.log(graph.files[0]?.exports);
+```
+
+### Context Packet
+
+```ts
+import { createContextPacket } from 'astmend';
+
+const packet = await createContextPacket({
+  repoRoot: '/path/to/repo',
+  base: 'main',
+  head: 'HEAD',
+  includeSourceExcerpt: true,
+});
+
+console.log(packet.schemaVersion);
+console.log(packet.diff.changedFiles);
+console.log(packet.changedSymbols);
+console.log(packet.routes);
+console.log(packet.dbQueries);
+console.log(packet.riskHints);
+console.log(packet.warnings);
 ```
 
 ### Batch Apply
@@ -254,6 +292,7 @@ const result = await service.callTool('analyze_code_units_from_file', {
 ```bash
 npm run build
 npm run mcp:start
+npx astmend mcp
 ```
 
 開発時:

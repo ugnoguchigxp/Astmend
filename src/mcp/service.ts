@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { createContextPacket } from '../context-packet/createContextPacket.js';
+import { extractDbQueries } from '../context-packet/dbQueries.js';
+import { extractRiskHints } from '../context-packet/riskHints.js';
+import { extractRoutes } from '../context-packet/routes.js';
 import {
   analyzeImportExportGraphFromFile,
   analyzeImportExportGraphFromProject,
@@ -110,6 +114,28 @@ const analyzeImportExportGraphFromProjectInputSchema = z.object({
   projectRoot: z.string().min(1),
 });
 
+const getContextInputSchema = z
+  .object({
+    repoRoot: z.string().min(1),
+    base: z.string().min(1).optional(),
+    head: z.string().min(1).optional(),
+    diffFile: z.string().min(1).optional(),
+    includeSourceExcerpt: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.diffFile && (value.base || value.head)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'diffFile cannot be combined with base/head.',
+      });
+    }
+  });
+
+const extractionInputSchema = z.object({
+  repoRoot: z.string().min(1),
+  files: z.array(z.string().min(1)).optional(),
+});
+
 type MaybePromise<T> = T | Promise<T>;
 
 export type AstmendMcpToolDefinition = {
@@ -211,6 +237,66 @@ const tools = [
     handler: ({ operation }) => {
       try {
         return toToolSuccessResult(validatePatchProjectOperation(operation));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'get_context',
+    title: 'Get Context Packet',
+    description: 'Build a context packet from repo diff and static analysis results.',
+    inputSchema: getContextInputSchema,
+    handler: async ({ repoRoot, base, head, diffFile, includeSourceExcerpt }) => {
+      try {
+        return toToolSuccessResult(
+          await createContextPacket({
+            repoRoot,
+            ...(base ? { base } : {}),
+            ...(head ? { head } : {}),
+            ...(diffFile ? { diffFile } : {}),
+            ...(typeof includeSourceExcerpt === 'boolean' ? { includeSourceExcerpt } : {}),
+          }),
+        );
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'extract_routes',
+    title: 'Extract Routes',
+    description: 'Extract Hono-like route definitions from project files.',
+    inputSchema: extractionInputSchema,
+    handler: async ({ repoRoot, files }) => {
+      try {
+        return toToolSuccessResult(await extractRoutes({ repoRoot, files }));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'extract_db_queries',
+    title: 'Extract DB Queries',
+    description: 'Extract Drizzle-like database query expressions.',
+    inputSchema: extractionInputSchema,
+    handler: async ({ repoRoot, files }) => {
+      try {
+        return toToolSuccessResult(await extractDbQueries({ repoRoot, files }));
+      } catch (error) {
+        return toToolErrorResult(error);
+      }
+    },
+  }),
+  defineTool({
+    name: 'get_risk_hints',
+    title: 'Get Risk Hints',
+    description: 'Extract lightweight static-analysis review hints.',
+    inputSchema: extractionInputSchema,
+    handler: async ({ repoRoot, files }) => {
+      try {
+        return toToolSuccessResult(await extractRiskHints({ repoRoot, files }));
       } catch (error) {
         return toToolErrorResult(error);
       }

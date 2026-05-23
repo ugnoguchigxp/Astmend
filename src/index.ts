@@ -1,4 +1,29 @@
 export {
+  assertContextOptions,
+  createContextPacket,
+} from './context-packet/createContextPacket.js';
+export { extractDbQueries } from './context-packet/dbQueries.js';
+export { extractRiskHints } from './context-packet/riskHints.js';
+export { extractRoutes } from './context-packet/routes.js';
+export {
+  type CallRelationInfo,
+  type ChangedFileInfo,
+  type ChangedRangeInfo,
+  CONTEXT_PACKET_SCHEMA_VERSION,
+  type ContextChangedSymbol,
+  type ContextOptions,
+  type ContextPacket,
+  type ContextWarning,
+  contextOptionsSchema,
+  contextPacketSchema,
+  type DbQueryInfo,
+  type ExtractionResult,
+  extractionResultSchema,
+  type RiskHintInfo,
+  type RouteInfo,
+  type SourceExcerptInfo,
+} from './context-packet/schema.js';
+export {
   type AnalyzeChangedSymbolsOptions,
   analyzeChangedSymbolsFromDiff,
   analyzeChangedSymbolsFromText,

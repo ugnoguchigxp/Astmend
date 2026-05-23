@@ -4,8 +4,17 @@
   "private": false,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "astmend": "./dist/cli.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "mcp/README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,14 +34,25 @@
     "lint:fix": "biome lint --write .",
     "mcp:dev": "tsx src/mcp/server.ts",
     "mcp:start": "node dist/mcp/server.js",
+    "release:check": "npm run check && npm run build && npm run smoke:dist && npm run smoke:cli && npm run smoke:mcp && npm pack --dry-run",
+    "smoke:cli": "node dist/cli.js version && node dist/cli.js context --help",
+    "smoke:dist": "node -e \"import('./dist/index.js')\" && node -e \"import('./dist/mcp/service.js')\"",
+    "smoke:global": "node scripts/smoke-global.mjs",
+    "smoke:mcp": "node dist/cli.js mcp < /dev/null && node dist/mcp/server.js < /dev/null",
+    "smoke:package": "npm run release:check && node scripts/smoke-package.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
+  },
+  "prepublishOnly": "npm run release:check",
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "diff": "^8.0.2",
     "ts-morph": "^27.0.2",
+    "typescript": "^5.9.2",
     "tsx": "^4.21.0",
     "zod": "^3.25.76"
   },
@@ -40,7 +60,6 @@
     "@biomejs/biome": "^2.4.10",
     "@types/node": "^24.3.0",
     "@vitest/coverage-v8": "^3.2.4",
-    "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
 }
